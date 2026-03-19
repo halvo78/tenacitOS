@@ -163,7 +163,7 @@ Use the `BRANDING` config from `src/config/branding.ts` instead of hardcoding:
 
 **❌ Bad:**
 ```typescript
-const username = "@carlosazaustre";
+const username = "@someuser";
 ```
 
 **✅ Good:**

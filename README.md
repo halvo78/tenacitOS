@@ -61,7 +61,7 @@ A real-time dashboard and control center for [OpenClaw](https://openclaw.ai) AI 
 TenacitOS reads directly from your OpenClaw installation:
 
 ```
-/root/.openclaw/              ← OPENCLAW_DIR (configurable)
+$OPENCLAW_DIR/                ← defaults to /root/.openclaw (Linux) or set in .env.local (Windows)
 ├── openclaw.json             ← agents list, channels, models config
 ├── workspace/                ← main agent workspace (MEMORY.md, SOUL.md, etc.)
 ├── workspace-studio/         ← sub-agent workspaces
@@ -79,8 +79,8 @@ The app uses `OPENCLAW_DIR` to locate `openclaw.json` and all workspaces. **No m
 ### 1. Clone into your OpenClaw workspace
 
 ```bash
-cd /root/.openclaw/workspace   # or your OPENCLAW_DIR/workspace
-git clone https://github.com/carlosazaustre/tenacitOS.git mission-control
+cd $OPENCLAW_DIR/workspace     # or your OPENCLAW_DIR/workspace
+git clone https://github.com/halvo78/tenacitOS.git mission-control
 cd mission-control
 npm install
 ```
@@ -102,8 +102,9 @@ ADMIN_PASSWORD=your-secure-password-here
 # Generate with: openssl rand -base64 32
 AUTH_SECRET=your-random-32-char-secret-here
 
-# --- OpenClaw paths (optional — defaults work for standard installs) ---
-# OPENCLAW_DIR=/root/.openclaw
+# --- OpenClaw paths (optional — defaults work for standard Linux installs) ---
+# OPENCLAW_DIR=/root/.openclaw          # Linux
+# OPENCLAW_DIR=E:\.openclaw              # Windows
 
 # --- Branding (customize for your instance) ---
 NEXT_PUBLIC_AGENT_NAME=Mission Control
@@ -120,7 +121,7 @@ NEXT_PUBLIC_COMPANY_NAME=MISSION CONTROL, INC.
 NEXT_PUBLIC_APP_TITLE=Mission Control
 ```
 
-> **Tip:** `OPENCLAW_DIR` defaults to `/root/.openclaw`. If your OpenClaw is installed elsewhere, set this variable.
+> **Tip:** `OPENCLAW_DIR` defaults to `/root/.openclaw` on Linux. On Windows, set it in `.env.local` (e.g. `OPENCLAW_DIR=E:\.openclaw`).
 
 ### 3. Initialize data files
 
@@ -182,7 +183,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/.openclaw/workspace/mission-control
+WorkingDirectory=/path/to/mission-control
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10
@@ -196,6 +197,7 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable mission-control
 sudo systemctl start mission-control
+# Note: systemd is Linux-only. On Windows, use PM2 or run as a Windows service.
 ```
 
 ### Reverse proxy — Caddy (HTTPS)

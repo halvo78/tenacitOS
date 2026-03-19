@@ -29,7 +29,7 @@ Pricing is defined in `src/lib/pricing.ts`.
 To collect usage data manually:
 
 ```bash
-cd /root/.openclaw/workspace/mission-control
+cd $OPENCLAW_DIR/workspace/mission-control
 npx tsx scripts/collect-usage.ts
 ```
 
@@ -43,7 +43,7 @@ This will:
 To set up hourly automatic collection:
 
 ```bash
-cd /root/.openclaw/workspace/mission-control
+cd $OPENCLAW_DIR/workspace/mission-control
 ./scripts/setup-cron.sh
 ```
 
@@ -164,7 +164,7 @@ Returns cost summary, breakdowns, and trends.
 **Unknown model warnings:**
 - Update `src/lib/pricing.ts` with new model pricing
 - Rebuild: `npm run build`
-- Restart: `systemctl restart mission-control`
+- Restart: `pm2 restart mission-control` (or `systemctl restart mission-control` on Linux)
 
 **Costs seem wrong:**
 - Verify pricing in `src/lib/pricing.ts`
@@ -183,4 +183,4 @@ Returns cost summary, breakdowns, and trends.
 ---
 
 **Created:** 2026-02-20  
-**Author:** Tenacitas 🦞
+**Author:** TenacitOS
