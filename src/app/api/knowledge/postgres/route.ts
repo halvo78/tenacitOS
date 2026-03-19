@@ -7,15 +7,17 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
+const DOCKER = process.platform === 'win32' ? 'wsl docker' : 'docker';
 
 export async function GET() {
   try {
     // Query table sizes via docker exec
     const { stdout } = await execAsync(
-      `docker exec postgres-omni psql -U omni -d omni_brain -t -A -c "SELECT tablename, pg_total_relation_size(quote_ident(tablename))::bigint as size FROM pg_tables WHERE schemaname = 'public' ORDER BY size DESC" 2>nul`
+      `${DOCKER} exec omni-postgres psql -U omni -d omni_brain -t -A -c "SELECT tablename, pg_total_relation_size(quote_ident(tablename))::bigint as size FROM pg_tables WHERE schemaname = 'public' ORDER BY size DESC" 2>&1`,
+      { timeout: 8000 }
     );
 
-    const tables = stdout.trim().split('\n').filter(Boolean).map((line) => {
+    const tables = stdout.trim().split('\n').filter(l => l.includes('|')).map((line) => {
       const [name, sizeBytes] = line.split('|');
       const size = parseInt(sizeBytes) || 0;
       return {
@@ -30,7 +32,8 @@ export async function GET() {
       tables.slice(0, 20).map(async (t) => {
         try {
           const { stdout: countOut } = await execAsync(
-            `docker exec postgres-omni psql -U omni -d omni_brain -t -A -c "SELECT count(*) FROM \\"${t.name}\\"" 2>nul`
+            `${DOCKER} exec omni-postgres psql -U omni -d omni_brain -t -A -c "SELECT count(*) FROM \\"${t.name}\\"" 2>&1`,
+            { timeout: 5000 }
           );
           return { ...t, rowCount: parseInt(countOut.trim()) || 0 };
         } catch {
@@ -52,6 +55,7 @@ export async function GET() {
     return NextResponse.json({
       status: 'down',
       error: 'Failed to query PostgreSQL',
+      host: '127.0.0.1:5433',
     }, { status: 500 });
   }
 }

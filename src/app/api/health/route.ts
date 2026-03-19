@@ -96,15 +96,16 @@ export async function GET() {
     { name: 'cAdvisor', status: infraChecks[8].status, latency: infraChecks[8].latency, url: 'http://127.0.0.1:8080', category: 'monitoring' },
   );
 
-  // Database connectivity checks (Redis, PostgreSQL via their HTTP proxies or direct)
+  // Database connectivity checks via WSL docker on Windows
+  const dockerCmd = process.platform === 'win32' ? 'wsl docker' : 'docker';
   const dbChecks = await Promise.all([
-    // Redis — check via CLI
-    execAsync('docker exec redis-stack redis-cli -a omni_secure_redis ping 2>nul')
-      .then(({ stdout }) => ({ name: 'Redis', status: stdout.includes('PONG') ? 'up' as const : 'down' as const, details: stdout.trim(), category: 'database' }))
+    // Redis
+    execAsync(`${dockerCmd} exec omni-redis redis-cli -a omni_secure_redis ping 2>&1`, { timeout: 5000 })
+      .then(({ stdout }) => ({ name: 'Redis', status: stdout.includes('PONG') ? 'up' as const : 'down' as const, details: 'PONG', category: 'database' }))
       .catch(() => ({ name: 'Redis', status: 'down' as const, details: 'unreachable', category: 'database' })),
-    // PostgreSQL — check via psql
-    execAsync('docker exec postgres-omni pg_isready -U omni -d omni_brain 2>nul')
-      .then(({ stdout }) => ({ name: 'PostgreSQL', status: stdout.includes('accepting') ? 'up' as const : 'down' as const, details: stdout.trim(), category: 'database' }))
+    // PostgreSQL
+    execAsync(`${dockerCmd} exec omni-postgres pg_isready -U omni -d omni_brain 2>&1`, { timeout: 5000 })
+      .then(({ stdout }) => ({ name: 'PostgreSQL', status: stdout.includes('accepting') ? 'up' as const : 'down' as const, details: stdout.trim().split('\n')[0], category: 'database' }))
       .catch(() => ({ name: 'PostgreSQL', status: 'unknown' as const, details: 'check failed', category: 'database' })),
   ]);
   checks.push(...dbChecks);
@@ -124,7 +125,7 @@ export async function GET() {
 
   // Docker check
   try {
-    const { stdout } = await execAsync('docker ps --format "{{.Names}}" 2>nul');
+    const { stdout } = await execAsync(`${dockerCmd} ps --format "{{.Names}}" 2>&1`, { timeout: 5000 });
     const containers = stdout.trim().split('\n').filter(Boolean);
     checks.push({ name: 'Docker', status: 'up', details: `${containers.length} containers running`, category: 'infrastructure' });
   } catch {

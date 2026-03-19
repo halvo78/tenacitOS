@@ -4,13 +4,13 @@
  */
 import { NextResponse } from 'next/server';
 
-const NEO4J_URL = 'http://127.0.0.1:7474';
+const NEO4J_HTTP = 'http://127.0.0.1:7474';
 const NEO4J_BOLT = 'bolt://127.0.0.1:7687';
 const NEO4J_USER = 'neo4j';
 const NEO4J_PASS = 'omni_secure_graph';
 
 async function neo4jQuery(cypher: string): Promise<unknown> {
-  const res = await fetch(`${NEO4J_URL}/db/neo4j/tx/commit`, {
+  const res = await fetch(`${NEO4J_HTTP}/db/neo4j/tx/commit`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -21,11 +21,30 @@ async function neo4jQuery(cypher: string): Promise<unknown> {
     }),
     signal: AbortSignal.timeout(5000),
   });
+  if (!res.ok) {
+    throw new Error(`Neo4j HTTP ${res.status}`);
+  }
   return res.json();
 }
 
 export async function GET() {
   try {
+    // First check if Neo4j HTTP is reachable
+    const healthCheck = await fetch(NEO4J_HTTP, { signal: AbortSignal.timeout(3000) }).catch(() => null);
+    if (!healthCheck) {
+      // Try the bolt port via a simple HTTP check (Neo4j browser)
+      return NextResponse.json({
+        status: 'degraded',
+        bolt: NEO4J_BOLT,
+        note: 'Neo4j HTTP API not reachable. Bolt port may still work.',
+        totalNodes: 0,
+        totalRelationships: 0,
+        labels: [],
+        labelCount: 0,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     // Get node count per label
     const labelsResult = await neo4jQuery('CALL db.labels() YIELD label RETURN label') as { results?: Array<{ data?: Array<{ row: string[] }> }> };
     const labels = labelsResult?.results?.[0]?.data?.map((d) => d.row[0]) || [];
@@ -62,8 +81,13 @@ export async function GET() {
     console.error('Neo4j error:', error);
     return NextResponse.json({
       status: 'down',
-      error: 'Failed to query Neo4j',
+      error: error instanceof Error ? error.message : 'Failed to query Neo4j',
       bolt: NEO4J_BOLT,
-    }, { status: 500 });
+      totalNodes: 0,
+      totalRelationships: 0,
+      labels: [],
+      labelCount: 0,
+      timestamp: new Date().toISOString(),
+    });
   }
 }
