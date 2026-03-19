@@ -118,13 +118,53 @@ export async function GET(request: NextRequest) {
 
 async function listSessions(): Promise<NextResponse> {
   try {
-    const output = execSync('openclaw sessions list --json 2>nul', {
-      timeout: 15000,
-      encoding: 'utf-8',
-    });
+    let data: { sessions?: RawSession[] } | null = null;
 
-    const data = JSON.parse(output);
-    const rawSessions: RawSession[] = data.sessions || [];
+    // Try gateway API first (faster than CLI)
+    try {
+      const fs = require('fs');
+      const configRaw = fs.readFileSync(OPENCLAW_DIR + '/openclaw.json', 'utf-8');
+      const config = JSON.parse(configRaw);
+      const token = config.gateway?.auth?.token;
+      const port = config.gateway?.port || 19000;
+
+      if (token) {
+        const res = await fetch(`http://127.0.0.1:${port}/api/sessions`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (res.ok) {
+          const contentType = res.headers.get('content-type');
+          if (contentType?.includes('application/json')) {
+            const sessions = await res.json();
+            // Gateway returns array directly
+            if (Array.isArray(sessions)) {
+              data = { sessions: sessions as RawSession[] };
+            } else if (sessions?.sessions) {
+              data = sessions;
+            }
+          }
+        }
+      }
+    } catch {
+      // Gateway failed, fall through to CLI
+    }
+
+    // Fallback to CLI
+    if (!data) {
+      try {
+        const output = execSync('openclaw sessions list --json 2>nul', {
+          timeout: 12000,
+          encoding: 'utf-8',
+        });
+        data = JSON.parse(output);
+      } catch {
+        // Both failed — return empty
+        return NextResponse.json([]);
+      }
+    }
+
+    const rawSessions: RawSession[] = data?.sessions || [];
 
     const sessions: ParsedSession[] = rawSessions
       .reduce<ParsedSession[]>((acc, raw) => {
