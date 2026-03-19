@@ -1,5 +1,5 @@
 /**
- * Weather API - Madrid
+ * Weather API - Dynamic location from env
  * GET /api/weather
  * Uses Open-Meteo (free, no API key)
  */
@@ -33,15 +33,38 @@ const WMO_CODES: Record<number, { label: string; emoji: string }> = {
   99: { label: "Thunderstorm with heavy hail", emoji: "⛈️" },
 };
 
+// Parse location from env: "Sydney, Australia" -> coordinates
+// Default: Sydney
+function getCoordinates(): { lat: number; lon: number; city: string; timezone: string } {
+  const location = process.env.NEXT_PUBLIC_AGENT_LOCATION || "Sydney, Australia";
+  const city = location.split(",")[0].trim();
+
+  // Known locations
+  const KNOWN: Record<string, { lat: number; lon: number; timezone: string }> = {
+    "Sydney": { lat: -33.8688, lon: 151.2093, timezone: "Australia/Sydney" },
+    "Melbourne": { lat: -37.8136, lon: 144.9631, timezone: "Australia/Melbourne" },
+    "Brisbane": { lat: -27.4698, lon: 153.0251, timezone: "Australia/Brisbane" },
+    "Perth": { lat: -31.9505, lon: 115.8605, timezone: "Australia/Perth" },
+    "London": { lat: 51.5074, lon: -0.1278, timezone: "Europe/London" },
+    "New York": { lat: 40.7128, lon: -74.0060, timezone: "America/New_York" },
+    "Madrid": { lat: 40.4168, lon: -3.7038, timezone: "Europe/Madrid" },
+  };
+
+  const match = KNOWN[city];
+  if (match) return { ...match, city };
+
+  // Default to Sydney
+  return { lat: -33.8688, lon: 151.2093, city: "Sydney", timezone: "Australia/Sydney" };
+}
+
 export async function GET() {
-  // Return cache if valid
   if (cache && Date.now() - cache.ts < CACHE_DURATION) {
     return NextResponse.json(cache.data);
   }
 
   try {
-    // Madrid coordinates: 40.4168° N, 3.7038° W
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Europe%2FMadrid&forecast_days=3';
+    const { lat, lon, city, timezone } = getCoordinates();
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=${encodeURIComponent(timezone)}&forecast_days=3`;
 
     const res = await fetch(url, { next: { revalidate: 600 } });
     const json = await res.json();
@@ -52,7 +75,7 @@ export async function GET() {
     const wmo = WMO_CODES[current.weather_code] || { label: "Unknown", emoji: "🌡️" };
 
     const data = {
-      city: "Madrid",
+      city,
       temp: Math.round(current.temperature_2m),
       feels_like: Math.round(current.apparent_temperature),
       humidity: current.relative_humidity_2m,

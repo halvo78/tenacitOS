@@ -1,54 +1,26 @@
 import { NextResponse } from "next/server";
-import { readFileSync, statSync, readdirSync } from "fs";
+import { readFileSync, statSync, existsSync } from "fs";
 import { join } from "path";
 
 export const dynamic = "force-dynamic";
 
-const AGENT_CONFIG = {
-  main: { emoji: "🦞", color: "#ff6b35", name: "Tenacitas", role: "Boss" },
-  academic: {
-    emoji: "🎓",
-    color: "#4ade80",
-    name: "Profe",
-    role: "Teacher",
-  },
-  infra: {
-    emoji: "🔧",
-    color: "#f97316",
-    name: "Infra",
-    role: "DevOps",
-  },
-  studio: {
-    emoji: "🎬",
-    color: "#a855f7",
-    name: "Studio",
-    role: "Video Editor",
-  },
-  social: {
-    emoji: "📱",
-    color: "#ec4899",
-    name: "Social",
-    role: "Social Media",
-  },
-  linkedin: {
-    emoji: "💼",
-    color: "#0077b5",
-    name: "LinkedIn Pro",
-    role: "Professional",
-  },
-  devclaw: {
-    emoji: "👨‍💻",
-    color: "#8b5cf6",
-    name: "DevClaw",
-    role: "Developer",
-  },
-  freelance: {
-    emoji: "👨‍💻",
-    color: "#8b5cf6",
-    name: "DevClaw",
-    role: "Developer",
-  },
-};
+const OPENCLAW_DIR = process.env.OPENCLAW_DIR || "E:\\.openclaw";
+const OPENCLAW_CONFIG = join(OPENCLAW_DIR, "openclaw.json");
+
+// Load agent display config from data/agent-display.json
+function loadAgentDisplay(): Record<string, { emoji: string; color: string; name: string }> {
+  try {
+    const displayPath = join(process.cwd(), "data", "agent-display.json");
+    if (existsSync(displayPath)) {
+      return JSON.parse(readFileSync(displayPath, "utf-8"));
+    }
+  } catch {
+    // Fall through to default
+  }
+  return {
+    main: { emoji: "⚡", color: "#FFD700", name: "Pulse" },
+  };
+}
 
 interface AgentSession {
   agentId: string;
@@ -62,21 +34,20 @@ async function getAgentStatusFromGateway(): Promise<
   Record<string, { isActive: boolean; currentTask: string; lastSeen: number }>
 > {
   try {
-    const configPath = (process.env.OPENCLAW_DIR || "/root/.openclaw") + "/openclaw.json";
-    const config = JSON.parse(readFileSync(configPath, "utf-8"));
+    const config = JSON.parse(readFileSync(OPENCLAW_CONFIG, "utf-8"));
     const gatewayToken = config.gateway?.auth?.token;
+    const gatewayPort = config.gateway?.port || 19000;
 
     if (!gatewayToken) {
       console.warn("No gateway token found");
       return {};
     }
 
-    // Try to fetch sessions from gateway
-    const response = await fetch("http://localhost:18789/api/sessions", {
+    const response = await fetch(`http://127.0.0.1:${gatewayPort}/api/sessions`, {
       headers: {
         Authorization: `Bearer ${gatewayToken}`,
       },
-      signal: AbortSignal.timeout(2000), // 2s timeout
+      signal: AbortSignal.timeout(2000),
     });
 
     if (!response.ok) {
@@ -84,7 +55,6 @@ async function getAgentStatusFromGateway(): Promise<
       return {};
     }
 
-    // Verify Content-Type before parsing JSON
     const contentType = response.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
       console.warn("Gateway returned non-JSON response:", contentType);
@@ -117,7 +87,6 @@ async function getAgentStatusFromGateway(): Promise<
         currentTask = session.label || "Idle...";
       }
 
-      // Keep most recent activity per agent
       if (
         !agentStatus[session.agentId] ||
         lastActivity > agentStatus[session.agentId].lastSeen
@@ -145,7 +114,6 @@ function getAgentStatusFromFiles(
     const today = new Date().toISOString().split("T")[0];
     const memoryFile = join(workspace, "memory", `${today}.md`);
 
-    // Check if file exists
     const stat = statSync(memoryFile);
     const lastSeen = stat.mtime.getTime();
     const minutesSinceUpdate = (Date.now() - lastSeen) / 1000 / 60;
@@ -155,7 +123,6 @@ function getAgentStatusFromFiles(
 
     let currentTask = "Idle...";
     if (lines.length > 0) {
-      // Get last meaningful line (skip timestamps)
       const lastLine = lines
         .slice(-10)
         .reverse()
@@ -167,7 +134,6 @@ function getAgentStatusFromFiles(
       }
     }
 
-    // Determine status based on file modification time
     if (minutesSinceUpdate < 5) {
       return { isActive: true, currentTask: `ACTIVE: ${currentTask}`, lastSeen };
     } else if (minutesSinceUpdate < 30) {
@@ -175,26 +141,24 @@ function getAgentStatusFromFiles(
     } else {
       return { isActive: false, currentTask: "SLEEPING: zzZ...", lastSeen };
     }
-  } catch (error) {
-    // No memory file or error reading
+  } catch {
     return { isActive: false, currentTask: "SLEEPING: zzZ...", lastSeen: 0 };
   }
 }
 
 export async function GET() {
   try {
-    const configPath = (process.env.OPENCLAW_DIR || "/root/.openclaw") + "/openclaw.json";
-    const config = JSON.parse(readFileSync(configPath, "utf-8"));
+    const config = JSON.parse(readFileSync(OPENCLAW_CONFIG, "utf-8"));
+    const agentDisplay = loadAgentDisplay();
 
     // Try gateway first, fallback to file-based
     const gatewayStatus = await getAgentStatusFromGateway();
 
-    const agents = config.agents.list.map((agent: any) => {
-      const agentInfo = AGENT_CONFIG[agent.id as keyof typeof AGENT_CONFIG] || {
+    const agents = config.agents.list.map((agent: { id: string; name?: string; workspace: string }) => {
+      const display = agentDisplay[agent.id] || {
         emoji: "🤖",
         color: "#666",
         name: agent.name || agent.id,
-        role: "Agent",
       };
 
       // Get status from gateway, or fallback to files
@@ -203,15 +167,12 @@ export async function GET() {
         status = getAgentStatusFromFiles(agent.id, agent.workspace);
       }
 
-      // Map freelance -> devclaw for canvas compatibility
-      const canvasId = agent.id === "freelance" ? "devclaw" : agent.id;
-
       return {
-        id: canvasId,
-        name: agentInfo.name,
-        emoji: agentInfo.emoji,
-        color: agentInfo.color,
-        role: agentInfo.role,
+        id: agent.id,
+        name: display.name,
+        emoji: display.emoji,
+        color: display.color,
+        role: agent.name || "Agent",
         currentTask: status.currentTask,
         isActive: status.isActive,
       };

@@ -139,7 +139,7 @@ export function TopBar() {
                   color: "var(--text-primary)",
                 }}
               >
-                C
+                {(process.env.NEXT_PUBLIC_OWNER_DISPLAY_NAME || "Eli").charAt(0)}
               </span>
             </div>
             {/* Name */}
@@ -151,7 +151,7 @@ export function TopBar() {
                 color: "var(--text-secondary)",
               }}
             >
-              Carlos
+              {process.env.NEXT_PUBLIC_OWNER_DISPLAY_NAME || "Eli"}
             </span>
           </div>
         </div>

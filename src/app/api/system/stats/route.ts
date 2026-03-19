@@ -5,8 +5,6 @@ import os from "os";
 
 const execAsync = promisify(exec);
 
-const SYSTEMD_SERVICES = ["mission-control", "content-vault", "classvault", "creatoros"];
-
 export async function GET() {
   try {
     // CPU (load average as percentage)
@@ -23,46 +21,72 @@ export async function GET() {
       total: parseFloat((totalMem / 1024 / 1024 / 1024).toFixed(2)),
     };
 
-    // Disk
+    // Disk (Windows wmic)
     let diskUsed = 0;
     let diskTotal = 100;
     try {
-      const { stdout } = await execAsync("df -BG / | tail -1");
-      const parts = stdout.trim().split(/\s+/);
-      diskTotal = parseInt(parts[1].replace("G", ""));
-      diskUsed = parseInt(parts[2].replace("G", ""));
-    } catch (error) {
-      console.error("Failed to get disk stats:", error);
+      const { stdout } = await execAsync(
+        "wmic logicaldisk where \"caption='E:'\" get freespace,size /format:csv 2>nul"
+      );
+      const lines = stdout.trim().split("\n").filter((l) => l.trim() && !l.startsWith("Node"));
+      if (lines.length > 0) {
+        const parts = lines[0].trim().split(",");
+        if (parts.length >= 3) {
+          const freeSpace = parseInt(parts[1]) || 0;
+          const size = parseInt(parts[2]) || 0;
+          diskTotal = Math.round(size / 1024 / 1024 / 1024);
+          diskUsed = Math.round((size - freeSpace) / 1024 / 1024 / 1024);
+        }
+      }
+    } catch {
+      // Fallback: try C: drive
+      try {
+        const { stdout } = await execAsync(
+          "wmic logicaldisk where \"caption='C:'\" get freespace,size /format:csv 2>nul"
+        );
+        const lines = stdout.trim().split("\n").filter((l) => l.trim() && !l.startsWith("Node"));
+        if (lines.length > 0) {
+          const parts = lines[0].trim().split(",");
+          if (parts.length >= 3) {
+            const freeSpace = parseInt(parts[1]) || 0;
+            const size = parseInt(parts[2]) || 0;
+            diskTotal = Math.round(size / 1024 / 1024 / 1024);
+            diskUsed = Math.round((size - freeSpace) / 1024 / 1024 / 1024);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to get disk stats:", error);
+      }
     }
 
-    // Systemd Services (count active ones)
+    // PM2 Services (count active ones)
     let activeServices = 0;
-    let totalServices = SYSTEMD_SERVICES.length;
+    let totalServices = 0;
     try {
-      for (const name of SYSTEMD_SERVICES) {
-        const { stdout } = await execAsync(`systemctl is-active ${name} 2>/dev/null || true`);
-        if (stdout.trim() === "active") activeServices++;
-      }
+      const { stdout } = await execAsync("pm2 jlist 2>nul");
+      const pm2List = JSON.parse(stdout) as Array<{ pm2_env: { status: string } }>;
+      totalServices = pm2List.length;
+      activeServices = pm2List.filter((p) => p.pm2_env?.status === "online").length;
     } catch (error) {
-      console.error("Failed to get systemd stats:", error);
+      console.error("Failed to get PM2 stats:", error);
     }
 
     // Tailscale VPN Status
     let vpnActive = false;
     try {
-      const { stdout } = await execAsync("tailscale status 2>/dev/null || true");
+      const { stdout } = await execAsync("tailscale status 2>nul");
       vpnActive = stdout.trim().length > 0 && !stdout.includes("Tailscale is stopped");
     } catch {
-      vpnActive = true; // We know it's active
+      vpnActive = false;
     }
 
-    // Firewall Status
+    // Firewall Status (Windows netsh)
     let firewallActive = true;
     try {
-      const { stdout } = await execAsync("ufw status 2>/dev/null | head -1 || true");
-      firewallActive = stdout.includes("active");
+      const { stdout } = await execAsync("netsh advfirewall show currentprofile state 2>nul");
+      firewallActive = stdout.toLowerCase().includes("on");
     } catch {
-      firewallActive = true;
+      firewallActive = true; // safe default
     }
 
     // Uptime

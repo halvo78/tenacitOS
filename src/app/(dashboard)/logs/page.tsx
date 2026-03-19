@@ -10,12 +10,20 @@ interface LogLine {
 }
 
 const SERVICES = [
-  { name: "mission-control", backend: "systemd", label: "Mission Control" },
-  { name: "classvault", backend: "pm2", label: "ClassVault" },
-  { name: "content-vault", backend: "pm2", label: "Content Vault" },
-  { name: "brain", backend: "pm2", label: "Brain" },
-  { name: "postiz-simple", backend: "pm2", label: "Postiz" },
-  { name: "openclaw-gateway", backend: "systemd", label: "Gateway" },
+  { name: "openclaw-gateway", backend: "pm2", label: "Gateway" },
+  { name: "mission-control", backend: "pm2", label: "Mission Control" },
+  { name: "openclaw-watchdog", backend: "pm2", label: "Watchdog" },
+  { name: "tenacitOS", backend: "pm2", label: "TenacitOS" },
+  { name: "claude-bot", backend: "pm2", label: "Claude Bot" },
+  { name: "gemini-bot", backend: "pm2", label: "Gemini Bot" },
+  { name: "codex-bot", backend: "pm2", label: "Codex Bot" },
+  { name: "alert-bot", backend: "pm2", label: "Alert Bot" },
+  { name: "revenue-bot", backend: "pm2", label: "Revenue Bot" },
+  { name: "pulse-watcher", backend: "pm2", label: "Pulse Watcher" },
+  { name: "pulse-github-sync", backend: "pm2", label: "GitHub Sync" },
+  { name: "pulse-ingest", backend: "pm2", label: "Pulse Ingest" },
+  { name: "pulse-ecosystem", backend: "pm2", label: "Pulse Ecosystem" },
+  { name: "pm2-logrotate", backend: "pm2", label: "Log Rotate" },
 ];
 
 function getLineColor(line: string): string {

@@ -25,33 +25,29 @@ interface Agent {
   activeSessions: number;
 }
 
-// Fallback config used when an agent doesn't define its own ui config in openclaw.json.
-// The main agent reads name/emoji from env vars; all others fall back to generic defaults.
-// Override via each agent's openclaw.json → ui.emoji / ui.color / name fields.
-const DEFAULT_AGENT_CONFIG: Record<string, { emoji: string; color: string; name?: string }> = {
-  main: {
-    emoji: process.env.NEXT_PUBLIC_AGENT_EMOJI || "🤖",
-    color: "#ff6b35",
-    name: process.env.NEXT_PUBLIC_AGENT_NAME || "Mission Control",
-  },
-};
+// Agent display config loaded from TenacitOS's own data file (NOT openclaw.json — schema doesn't support ui keys)
+let AGENT_DISPLAY: Record<string, { emoji: string; color: string; name: string }> = {};
+try {
+  AGENT_DISPLAY = JSON.parse(readFileSync(join(__dirname, '../../../../data/agent-display.json'), 'utf-8'));
+} catch {
+  try {
+    AGENT_DISPLAY = JSON.parse(readFileSync(join(process.cwd(), 'data/agent-display.json'), 'utf-8'));
+  } catch {
+    // Fall back to empty — all agents get default emoji
+  }
+}
 
 /**
- * Get agent display info (emoji, color, name) from openclaw.json or defaults
+ * Get agent display info from agent-display.json (TenacitOS config, NOT openclaw.json)
  */
 function getAgentDisplayInfo(agentId: string, agentConfig: any): { emoji: string; color: string; name: string } {
-  // First try to get from agent's own config in openclaw.json
-  const configEmoji = agentConfig?.ui?.emoji;
-  const configColor = agentConfig?.ui?.color;
+  const display = AGENT_DISPLAY[agentId];
   const configName = agentConfig?.name;
 
-  // Then try defaults
-  const defaults = DEFAULT_AGENT_CONFIG[agentId];
-
   return {
-    emoji: configEmoji || defaults?.emoji || "🤖",
-    color: configColor || defaults?.color || "#666666",
-    name: configName || defaults?.name || agentId,
+    emoji: display?.emoji || "🤖",
+    color: display?.color || "#666666",
+    name: configName || display?.name || agentId,
   };
 }
 

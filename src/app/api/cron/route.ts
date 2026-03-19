@@ -7,17 +7,17 @@ function getGatewayConfig() {
     const config = JSON.parse(configRaw);
     return {
       token: config.gateway?.auth?.token || "",
-      port: config.gateway?.port || 18789,
+      port: config.gateway?.port || 19000,
     };
   } catch {
-    return { token: "", port: 18789 };
+    return { token: "", port: 19000 };
   }
 }
 
 // GET: List all cron jobs from the OpenClaw gateway
 export async function GET() {
   try {
-    const output = execSync("openclaw cron list --json --all 2>/dev/null", {
+    const output = execSync("openclaw cron list --json --all 2>nul", {
       timeout: 10000,
       encoding: "utf-8",
     });
@@ -101,7 +101,7 @@ export async function PUT(request: NextRequest) {
     const action = enabled ? "enable" : "disable";
     // Use openclaw CLI to update the job
     const output = execSync(
-      `openclaw cron ${action} ${id} --json 2>/dev/null || openclaw cron update ${id} --enabled=${enabled} --json 2>/dev/null`,
+      `openclaw cron ${action} ${id} --json 2>nul || openclaw cron update ${id} --enabled=${enabled} --json 2>nul`,
       { timeout: 10000, encoding: "utf-8" }
     );
 
@@ -125,7 +125,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Job ID is required" }, { status: 400 });
     }
 
-    execSync(`openclaw cron remove ${id} 2>/dev/null`, {
+    execSync(`openclaw cron remove ${id} 2>nul`, {
       timeout: 10000,
       encoding: "utf-8",
     });

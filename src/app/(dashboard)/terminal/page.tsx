@@ -12,18 +12,18 @@ interface HistoryEntry {
 }
 
 const QUICK_COMMANDS = [
-  "df -h /",
-  "free -h",
+  "wmic logicaldisk get caption,freespace,size",
+  "systeminfo | findstr Memory",
   "uptime",
-  "ps aux | grep node",
-  "systemctl status mission-control",
+  "tasklist | findstr node",
   "pm2 list",
-  "ls /root/.openclaw/workspace",
-  "git -C /root/.openclaw/workspace/mission-control status",
-  "journalctl -u mission-control -n 20 --no-pager",
+  "pm2 logs mission-control --lines 20",
+  "dir E:\\workspaces\\main",
+  "git -C E:\\workspaces\\main status",
   "docker ps",
-  "netstat -tlnp",
-  "cat /proc/loadavg",
+  "netstat -ano | findstr LISTENING",
+  "wmic cpu get loadpercentage",
+  "tasklist | findstr docker",
 ];
 
 export default function TerminalPage() {
@@ -123,7 +123,7 @@ export default function TerminalPage() {
               Browser Terminal
             </h1>
             <p style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-              Read-only commands only (ls, cat, df, ps, git status, etc.)
+              Read-only commands only (dir, type, wmic, tasklist, git status, etc.)
             </p>
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -188,7 +188,7 @@ export default function TerminalPage() {
             <div key={i} style={{ marginBottom: "1rem" }}>
               {/* Command prompt */}
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
-                <span style={{ color: "#4ade80" }}>tenacitas@srv</span>
+                <span style={{ color: "#4ade80" }}>pulse@srv</span>
                 <span style={{ color: "#8b949e" }}>:</span>
                 <span style={{ color: "#60a5fa" }}>~</span>
                 <span style={{ color: "#c9d1d9" }}>$ {entry.command}</span>

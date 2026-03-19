@@ -21,7 +21,7 @@ function formatSize(bytes: number): string {
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString("es-ES", {
+  return d.toLocaleDateString("en-AU", {
     day: "numeric",
     month: "short",
     year: "numeric",

@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Terminal, Lock, AlertCircle } from "lucide-react";
+import { BRANDING } from "@/config/branding";
 
 function LoginForm() {
   const [password, setPassword] = useState("");
@@ -30,17 +31,17 @@ function LoginForm() {
         router.push(from);
         router.refresh();
       } else {
-        setError("Contraseña incorrecta");
+        setError("Incorrect password");
       }
     } catch {
-      setError("Error de conexión");
+      setError("Connection error");
     }
 
     setLoading(false);
   };
 
   return (
-    <div 
+    <div
       className="rounded-xl p-10"
       style={{
         backgroundColor: 'var(--card)',
@@ -50,14 +51,14 @@ function LoginForm() {
       {/* Header */}
       <div className="text-center mb-6 flex flex-col items-center gap-2">
         <div className="flex items-center gap-2.5">
-          <Terminal 
-            className="w-7 h-7" 
-            style={{ color: 'var(--accent)' }} 
+          <Terminal
+            className="w-7 h-7"
+            style={{ color: 'var(--accent)' }}
           />
-          <span className="text-2xl">🦞</span>
-          <h1 
+          <span className="text-2xl">{BRANDING.agentEmoji || "⚡"}</span>
+          <h1
             className="text-xl font-bold"
-            style={{ 
+            style={{
               fontFamily: 'var(--font-heading)',
               color: 'var(--text-primary)',
               letterSpacing: '-0.5px'
@@ -66,19 +67,19 @@ function LoginForm() {
             Mission Control
           </h1>
         </div>
-        <p 
+        <p
           className="text-sm"
           style={{ color: 'var(--text-secondary)' }}
         >
-          Introduce la contraseña para acceder
+          Enter password to access
         </p>
       </div>
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="relative">
-          <Lock 
-            className="absolute left-4 top-1/2 -translate-y-1/2 w-[18px] h-[18px]" 
+          <Lock
+            className="absolute left-4 top-1/2 -translate-y-1/2 w-[18px] h-[18px]"
             style={{ color: 'var(--text-muted)' }}
           />
           <input
@@ -91,13 +92,13 @@ function LoginForm() {
               border: '1px solid var(--border)',
               color: 'var(--text-primary)',
             }}
-            placeholder="Contraseña"
+            placeholder="Password"
             required
           />
         </div>
 
         {error && (
-          <div 
+          <div
             className="flex items-center gap-2 text-sm px-4 py-3 rounded-lg"
             style={{
               backgroundColor: 'var(--error-bg)',
@@ -118,16 +119,16 @@ function LoginForm() {
             color: 'white',
           }}
         >
-          {loading ? "Verificando..." : "Entrar"}
+          {loading ? "Verifying..." : "Login"}
         </button>
       </form>
 
       {/* Footer */}
-      <p 
+      <p
         className="text-center text-xs mt-6"
         style={{ color: 'var(--text-muted)' }}
       >
-        Tenacitas Agent Dashboard
+        {BRANDING.appTitle || "Mission Control"}
       </p>
     </div>
   );
@@ -135,13 +136,13 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div 
+    <div
       className="min-h-screen flex items-center justify-center p-4 -ml-64"
       style={{ backgroundColor: 'var(--background)' }}
     >
       <div className="w-full max-w-md">
         <Suspense fallback={
-          <div 
+          <div
             className="rounded-xl p-10 animate-pulse"
             style={{
               backgroundColor: 'var(--card)',

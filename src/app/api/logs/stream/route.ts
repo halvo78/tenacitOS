@@ -1,16 +1,31 @@
 /**
  * Real-time log streaming via SSE
- * GET /api/logs/stream?service=<name>&backend=<pm2|systemd|file>
+ * GET /api/logs/stream?service=<name>&backend=<pm2|docker>
  */
 import { NextRequest } from 'next/server';
 import { spawn } from 'child_process';
 
-const ALLOWED_SERVICES = ['mission-control', 'classvault', 'content-vault', 'postiz-simple', 'brain', 'openclaw-gateway'];
+const ALLOWED_SERVICES = [
+  'openclaw-gateway',
+  'mission-control',
+  'openclaw-watchdog',
+  'tenacitOS',
+  'claude-bot',
+  'gemini-bot',
+  'codex-bot',
+  'alert-bot',
+  'revenue-bot',
+  'pulse-watcher',
+  'pulse-github-sync',
+  'pulse-ingest',
+  'pulse-ecosystem',
+  'pm2-logrotate',
+];
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const service = searchParams.get('service') || 'mission-control';
-  const backend = searchParams.get('backend') || 'systemd';
+  const service = searchParams.get('service') || 'openclaw-gateway';
+  const backend = searchParams.get('backend') || 'pm2';
 
   if (!ALLOWED_SERVICES.includes(service)) {
     return new Response('Service not allowed', { status: 400 });
@@ -29,10 +44,11 @@ export async function GET(request: NextRequest) {
       send(`[stream] Connected to ${service} (${backend})`);
 
       let cmd: string[];
-      if (backend === 'pm2') {
-        cmd = ['pm2', 'logs', service, '--lines', '50', '--nocolor'];
+      if (backend === 'docker') {
+        cmd = ['docker', 'logs', '--tail', '50', '-f', service];
       } else {
-        cmd = ['journalctl', '-u', service, '-n', '50', '--no-pager', '-f'];
+        // PM2 (default for all services on Windows)
+        cmd = ['pm2', 'logs', service, '--lines', '50', '--nocolor'];
       }
 
       const proc = spawn(cmd[0], cmd.slice(1), { stdio: ['ignore', 'pipe', 'pipe'] });

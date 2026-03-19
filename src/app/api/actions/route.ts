@@ -1,16 +1,17 @@
 /**
- * Quick Actions API
+ * Quick Actions API — Windows Edition
  * POST /api/actions  body: { action }
- * Available actions: git-status, restart-gateway, clear-temp, usage-stats, heartbeat
+ * Available actions: git-status, restart-gateway, clear-temp, usage-stats, heartbeat, npm-audit
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import os from 'os';
 import { logActivity } from '@/lib/activities-db';
 
 const execAsync = promisify(exec);
 
-const WORKSPACE = process.env.OPENCLAW_DIR ? `${process.env.OPENCLAW_DIR}/workspace` : '/root/.openclaw/workspace';
+const WORKSPACE = process.env.OPENCLAW_WORKSPACE || 'E:\\workspaces\\main';
 
 interface ActionResult {
   action: string;
@@ -29,13 +30,11 @@ async function runAction(action: string): Promise<ActionResult> {
 
     switch (action) {
       case 'git-status': {
-        // Find all git repos in workspace and get their status
-        const { stdout: dirs } = await execAsync(`find "${WORKSPACE}" -maxdepth 2 -name ".git" -type d 2>/dev/null | head -10`);
-        const repoPaths = dirs.trim().split('\n').filter(Boolean).map((d) => d.replace('/.git', ''));
-
+        // Check git status for main workspace and repos
         const results: string[] = [];
-        for (const repoPath of repoPaths) {
-          const name = repoPath.split('/').pop() || repoPath;
+        const dirs = [WORKSPACE, 'E:\\repos\\tenacitOS'];
+        for (const repoPath of dirs) {
+          const name = repoPath.split('\\').pop() || repoPath;
           try {
             const { stdout: status } = await execAsync(`cd "${repoPath}" && git status --short && git log --oneline -3 2>&1`);
             results.push(`📁 ${name}:\n${status || '(clean)'}`);
@@ -43,72 +42,102 @@ async function runAction(action: string): Promise<ActionResult> {
             results.push(`📁 ${name}: (error reading git status)`);
           }
         }
-        output = results.length ? results.join('\n\n') : 'No git repos found in workspace';
+        output = results.length ? results.join('\n\n') : 'No git repos found';
         break;
       }
 
       case 'restart-gateway': {
-        const { stdout, stderr } = await execAsync('systemctl restart openclaw-gateway 2>&1 || echo "Service not found"');
+        const { stdout, stderr } = await execAsync('pm2 restart openclaw-gateway 2>&1');
         output = stdout || stderr || 'Restart command executed';
-        // Also check status
         try {
-          const { stdout: status } = await execAsync('systemctl is-active openclaw-gateway 2>&1 || echo "unknown"');
-          output += `\nStatus: ${status.trim()}`;
+          const { stdout: pm2json } = await execAsync('pm2 jlist 2>nul');
+          const list = JSON.parse(pm2json);
+          const gw = list.find((p: { name: string }) => p.name === 'openclaw-gateway');
+          output += `\nStatus: ${gw?.pm2_env?.status || 'unknown'}`;
         } catch {}
         break;
       }
 
       case 'clear-temp': {
-        const commands = [
-          'find /tmp -maxdepth 1 -type f -mtime +1 -delete 2>/dev/null; echo "Cleaned /tmp"',
-          `find "${WORKSPACE}" -name "*.tmp" -o -name "*.bak" | head -20 | xargs rm -f 2>/dev/null; echo "Cleaned tmp/bak files"`,
-          'find /root/.pm2/logs -name "*.log" -size +50M -exec truncate -s 10M {} \\; 2>/dev/null; echo "Trimmed large PM2 logs"',
-        ];
-        const results = await Promise.all(commands.map((cmd) => execAsync(cmd).then((r) => r.stdout).catch((e) => e.message)));
-        output = results.join('\n');
+        const tmpDir = os.tmpdir();
+        const results: string[] = [];
+        try {
+          const { stdout } = await execAsync(`dir "${tmpDir}" /A:-D /B 2>nul | find /c /v ""`);
+          results.push(`Temp files in ${tmpDir}: ${stdout.trim()}`);
+        } catch {
+          results.push(`Temp dir: ${tmpDir}`);
+        }
+        // Trim large PM2 logs
+        const pm2Home = process.env.PM2_HOME || `${process.env.USERPROFILE}\\.pm2`;
+        try {
+          const { stdout } = await execAsync(`dir "${pm2Home}\\logs" /A:-D /O:-S /B 2>nul`);
+          results.push(`PM2 log files:\n${stdout.trim().split('\n').slice(0, 5).join('\n')}`);
+        } catch {
+          results.push('PM2 logs: could not read');
+        }
+        output = results.join('\n\n');
         break;
       }
 
       case 'usage-stats': {
-        const { stdout: du } = await execAsync(`du -sh "${WORKSPACE}" 2>/dev/null || echo "N/A"`);
-        const { stdout: df } = await execAsync('df -h / | tail -1');
-        const { stdout: mem } = await execAsync('free -h | head -2');
-        const { stdout: cpu } = await execAsync("top -bn1 | grep 'Cpu(s)' | head -1");
-        const { stdout: uptime } = await execAsync('uptime -p');
-        output = `Workspace: ${du.trim()}\n\nDisk: ${df.trim()}\n\nMemory:\n${mem.trim()}\n\nCPU: ${cpu.trim()}\n\nUptime: ${uptime.trim()}`;
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const usedMem = totalMem - freeMem;
+        const uptimeSec = os.uptime();
+        const days = Math.floor(uptimeSec / 86400);
+        const hours = Math.floor((uptimeSec % 86400) / 3600);
+
+        let diskInfo = '';
+        try {
+          const { stdout } = await execAsync('wmic logicaldisk get caption,freespace,size /format:csv 2>nul');
+          const lines = stdout.trim().split('\n').filter(l => l.trim() && !l.startsWith('Node'));
+          for (const line of lines) {
+            const parts = line.trim().split(',');
+            if (parts.length >= 4 && parseInt(parts[3]) > 0) {
+              const cap = parts[1];
+              const free = Math.round(parseInt(parts[2]) / 1024 / 1024 / 1024);
+              const total = Math.round(parseInt(parts[3]) / 1024 / 1024 / 1024);
+              diskInfo += `${cap} ${total - free}GB / ${total}GB (${Math.round(((total - free) / total) * 100)}%)\n`;
+            }
+          }
+        } catch {
+          diskInfo = 'Could not read disk info';
+        }
+
+        output = [
+          `Memory: ${(usedMem / 1024 / 1024 / 1024).toFixed(1)}GB / ${(totalMem / 1024 / 1024 / 1024).toFixed(1)}GB`,
+          `CPU Cores: ${os.cpus().length}`,
+          `Uptime: ${days}d ${hours}h`,
+          `\nDisk:\n${diskInfo}`,
+        ].join('\n');
         break;
       }
 
       case 'heartbeat': {
-        // Check all critical services
-        const services = ['mission-control'];
-        const pm2services = ['classvault', 'content-vault', 'brain'];
         const results: string[] = [];
 
-        for (const svc of services) {
-          const { stdout } = await execAsync(`systemctl is-active ${svc} 2>/dev/null || echo "inactive"`);
-          const status = stdout.trim();
-          results.push(`${status === 'active' ? '✅' : '❌'} ${svc}: ${status}`);
-        }
-
+        // Check PM2 services
         try {
-          const { stdout: pm2 } = await execAsync('pm2 jlist 2>/dev/null');
-          const pm2list = JSON.parse(pm2);
-          for (const svc of pm2services) {
+          const { stdout: pm2json } = await execAsync('pm2 jlist 2>nul');
+          const pm2list = JSON.parse(pm2json);
+          const keyServices = ['openclaw-gateway', 'mission-control', 'openclaw-watchdog', 'tenacitOS', 'pulse-watcher'];
+          for (const svc of keyServices) {
             const proc = pm2list.find((p: { name: string }) => p.name === svc);
             const status = proc?.pm2_env?.status || 'not found';
-            results.push(`${status === 'online' ? '✅' : '❌'} ${svc} (pm2): ${status}`);
+            results.push(`${status === 'online' ? '✅' : '❌'} ${svc}: ${status}`);
           }
+          const onlineCount = pm2list.filter((p: { pm2_env: { status: string } }) => p.pm2_env?.status === 'online').length;
+          results.push(`\n📊 PM2 Total: ${onlineCount}/${pm2list.length} online`);
         } catch {
           results.push('⚠️ PM2: could not connect');
         }
 
-        // Ping the main site
+        // Check gateway HTTP
         try {
-          const { stdout: ping } = await execAsync('curl -s -o /dev/null -w "%{http_code}" --max-time 5 https://tenacitas.cazaustre.dev');
-          results.push(`\n🌐 tenacitas.cazaustre.dev: HTTP ${ping.trim()}`);
+          const gwRes = await fetch('http://127.0.0.1:19000/health', { signal: AbortSignal.timeout(3000) });
+          results.push(`\n🌐 Gateway: HTTP ${gwRes.status}`);
         } catch {
-          results.push('\n🌐 tenacitas.cazaustre.dev: unreachable');
+          results.push('\n🌐 Gateway: unreachable');
         }
 
         output = results.join('\n');
@@ -116,8 +145,13 @@ async function runAction(action: string): Promise<ActionResult> {
       }
 
       case 'npm-audit': {
-        const { stdout, stderr } = await execAsync(`cd "${WORKSPACE}/mission-control" && npm audit --json 2>/dev/null | node -e "const d=require('fs').readFileSync('/dev/stdin','utf-8');const j=JSON.parse(d);console.log('Vulnerabilities: '+JSON.stringify(j.metadata?.vulnerabilities||{}))" 2>&1`).catch((e) => ({ stdout: '', stderr: e.message }));
-        output = stdout || stderr || 'Audit completed';
+        try {
+          const { stdout } = await execAsync('cd "E:\\repos\\tenacitOS" && npm audit --json 2>nul');
+          const audit = JSON.parse(stdout);
+          output = `Vulnerabilities: ${JSON.stringify(audit.metadata?.vulnerabilities || {})}`;
+        } catch (e) {
+          output = `Audit: ${e instanceof Error ? e.message : 'completed'}`;
+        }
         break;
       }
 

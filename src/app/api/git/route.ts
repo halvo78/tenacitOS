@@ -10,7 +10,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 const execAsync = promisify(exec);
-const WORKSPACE = process.env.OPENCLAW_DIR ? `${process.env.OPENCLAW_DIR}/workspace` : '/root/.openclaw/workspace';
+const WORKSPACE = process.env.OPENCLAW_WORKSPACE || 'E:\\workspaces\\main';
 
 interface RepoStatus {
   name: string;
@@ -27,8 +27,43 @@ interface RepoStatus {
 }
 
 async function getRepos(): Promise<string[]> {
-  const { stdout } = await execAsync(`find "${WORKSPACE}" -maxdepth 2 -name ".git" -type d 2>/dev/null`);
-  return stdout.trim().split('\n').filter(Boolean).map((d) => d.replace('/.git', ''));
+  // Use Node.js fs instead of `find` for Windows compatibility
+  const repos: string[] = [];
+  try {
+    const entries = await fs.readdir(WORKSPACE, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const gitDir = path.join(WORKSPACE, entry.name, '.git');
+        try {
+          await fs.access(gitDir);
+          repos.push(path.join(WORKSPACE, entry.name));
+        } catch {
+          // Not a git repo, skip
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to scan repos:', err);
+  }
+  // Also add E:\repos entries
+  try {
+    const repoRoot = 'E:\\repos';
+    const entries = await fs.readdir(repoRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const gitDir = path.join(repoRoot, entry.name, '.git');
+        try {
+          await fs.access(gitDir);
+          repos.push(path.join(repoRoot, entry.name));
+        } catch {
+          // Not a git repo
+        }
+      }
+    }
+  } catch {
+    // E:\repos may not exist
+  }
+  return repos;
 }
 
 async function getRepoStatus(repoPath: string): Promise<RepoStatus> {

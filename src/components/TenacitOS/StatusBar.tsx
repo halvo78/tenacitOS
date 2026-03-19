@@ -182,7 +182,7 @@ export function StatusBar() {
             color: "var(--text-muted)",
           }}
         >
-          UFW
+          FW
         </span>
       </div>
 

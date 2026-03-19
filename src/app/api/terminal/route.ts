@@ -15,16 +15,17 @@ const execAsync = promisify(exec);
 // Allowlist of allowed base commands (first word of command)
 // NOTE: env, curl, wget intentionally excluded to prevent secret exfiltration and arbitrary downloads
 const ALLOWED_BASE_COMMANDS = new Set([
+  // Windows commands
+  'dir', 'type', 'findstr', 'wmic', 'systeminfo', 'netsh', 'netstat',
+  'tasklist', 'hostname', 'whoami', 'ipconfig', 'where',
+  // Cross-platform tools
+  'pm2', 'docker', 'git', 'ping', 'nslookup',
+  'openclaw', 'tailscale',
+  // Unix-like commands available in Git Bash / WSL
   'ls', 'cat', 'head', 'tail', 'grep', 'wc', 'find', 'stat', 'du', 'df',
-  'ps', 'pgrep', 'pidof', 'top', 'htop',
-  'uname', 'hostname', 'whoami', 'id', 'uptime', 'date', 'free',
-  'systemctl', 'journalctl',
-  'pm2', 'docker',
-  'git', 'ping', 'nslookup', 'dig', 'host',
-  'netstat', 'ss', 'ip', 'ifconfig', 'lsof',
-  'echo', 'printf', 'which', 'type', 'file',
-  'sort', 'uniq', 'awk', 'sed', 'tr', 'cut', 'xargs',
-  'locate',
+  'ps', 'uptime', 'date',
+  'echo', 'printf', 'which', 'file',
+  'sort', 'uniq', 'awk', 'sed', 'tr', 'cut',
 ]);
 
 // Explicitly blocked patterns
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
     if (!isCommandAllowed(command)) {
       return NextResponse.json({
         error: `Command not allowed: "${command}"`,
-        hint: 'Only safe read-only commands are permitted (ls, cat, df, ps, git, ping, etc.). Commands like env, curl, wget, node, python are blocked for security.',
+        hint: 'Only safe read-only commands are permitted (dir, type, wmic, tasklist, git, pm2, docker, etc.). Commands like env, curl, wget, node, python are blocked for security.',
       }, { status: 403 });
     }
 
