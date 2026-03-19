@@ -8,7 +8,7 @@ import { execSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
-const OPENCLAW_DIR = process.env.OPENCLAW_DIR || '/root/.openclaw';
+const OPENCLAW_DIR = process.env.OPENCLAW_DIR || 'E:\\.openclaw';
 
 interface RawSession {
   key: string;
@@ -118,8 +118,8 @@ export async function GET(request: NextRequest) {
 
 async function listSessions(): Promise<NextResponse> {
   try {
-    const output = execSync('openclaw sessions list --json 2>/dev/null', {
-      timeout: 10000,
+    const output = execSync('openclaw sessions list --json 2>nul', {
+      timeout: 15000,
       encoding: 'utf-8',
     });
 
