@@ -3,7 +3,7 @@ import { execSync } from "child_process";
 
 function getGatewayConfig() {
   try {
-    const configRaw = require("fs").readFileSync((process.env.OPENCLAW_DIR || "/root/.openclaw") + "/openclaw.json", "utf-8");
+    const configRaw = require("fs").readFileSync((process.env.OPENCLAW_DIR || "E:\\.openclaw") + "/openclaw.json", "utf-8");
     const config = JSON.parse(configRaw);
     return {
       token: config.gateway?.auth?.token || "",
@@ -17,13 +17,41 @@ function getGatewayConfig() {
 // GET: List all cron jobs from the OpenClaw gateway
 export async function GET() {
   try {
-    const output = execSync("openclaw cron list --json --all 2>nul", {
-      timeout: 10000,
-      encoding: "utf-8",
-    });
+    // Try gateway API first (faster than CLI)
+    const { token, port } = getGatewayConfig();
+    let data: Record<string, unknown> | null = null;
 
-    const data = JSON.parse(output);
-    const jobs = (data.jobs || []).map((job: Record<string, unknown>) => ({
+    if (token) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/cron`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (res.ok) {
+          const contentType = res.headers.get("content-type");
+          if (contentType?.includes("application/json")) {
+            data = await res.json();
+          }
+        }
+      } catch {
+        // Gateway API failed, fall through to CLI
+      }
+    }
+
+    // Fallback to CLI
+    if (!data) {
+      try {
+        const output = execSync("openclaw cron list --json --all 2>nul", {
+          timeout: 8000,
+          encoding: "utf-8",
+        });
+        data = JSON.parse(output);
+      } catch {
+        // Both methods failed — return empty
+        return NextResponse.json([]);
+      }
+    }
+    const jobs = ((data as Record<string, unknown>)?.jobs as Array<Record<string, unknown>> || []).map((job: Record<string, unknown>) => ({
       id: job.id,
       agentId: job.agentId || "main",
       name: job.name || "Unnamed",
