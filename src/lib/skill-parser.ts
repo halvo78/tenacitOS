@@ -38,7 +38,7 @@ interface SkillsConfig {
 }
 
 const CONFIG_PATH = path.join(process.cwd(), 'data', 'configured-skills.json');
-const DEFAULT_SYSTEM_PATH = '/usr/lib/node_modules/openclaw/skills';
+const DEFAULT_SYSTEM_PATH = process.env.OPENCLAW_SKILLS_PATH || '/usr/lib/node_modules/openclaw/skills';
 const DEFAULT_WORKSPACE_PATH = (process.env.OPENCLAW_DIR || '/root/.openclaw') + '/workspace-infra/skills';
 
 /**

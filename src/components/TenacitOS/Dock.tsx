@@ -22,17 +22,23 @@ import {
   ScrollText,
   Workflow,
   Heart,
+  MessageSquare,
+  Calendar,
+  ClipboardList,
 } from "lucide-react";
 
 const dockItems = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/system", label: "System Monitor", icon: Monitor },
   { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/tasks", label: "Tasks", icon: ClipboardList },
   { href: "/sessions", label: "Sessions", icon: History },
   { href: "/knowledge", label: "Knowledge", icon: Database },
   { href: "/memory", label: "Memory", icon: Brain },
   { href: "/files", label: "Files", icon: FolderOpen },
   { href: "/skills", label: "Skills", icon: Puzzle },
+  { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/cron", label: "Cron Jobs", icon: Clock },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/activity", label: "Activity", icon: Activity },

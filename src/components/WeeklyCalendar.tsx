@@ -9,133 +9,226 @@ import {
   addWeeks,
   subWeeks,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Clock } from "lucide-react";
 
-interface Task {
+interface CronJob {
   id: string;
+  agentId: string;
   name: string;
-  schedule: string;
+  enabled: boolean;
+  scheduleDisplay: string;
+  timezone: string;
+  nextRun: string | null;
+  lastRun: string | null;
   description: string;
-  nextRun: string;
 }
 
+const AGENT_COLORS: Record<string, string> = {
+  main: "#FFD700", kael: "#8B4513", jarvis: "#4169E1", gilfoil: "#DC143C",
+  strategist: "#2E8B57", hormozi: "#FF8C00", goggins: "#B22222", buffett: "#006400",
+  naval: "#4682B4", aurelius: "#708090", musk: "#1E90FF", default: "#8b5cf6",
+};
+
 export function WeeklyCalendar() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [jobs, setJobs] = useState<CronJob[]>([]);
   const [currentWeekStart, setCurrentWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
+  const [selectedJob, setSelectedJob] = useState<CronJob | null>(null);
 
   useEffect(() => {
-    fetch("/api/tasks")
+    fetch("/api/cron")
       .then((res) => res.json())
-      .then(setTasks)
-      .catch(() => setTasks([]));
+      .then((data) => setJobs(Array.isArray(data) ? data : []))
+      .catch(() => setJobs([]));
   }, []);
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
-  const getTasksForDayAndHour = (day: Date, hour: number) => {
-    return tasks.filter((task) => {
-      const taskDate = new Date(task.nextRun);
-      return isSameDay(taskDate, day) && taskDate.getHours() === hour;
+  const getJobsForDayAndHour = (day: Date, hour: number) => {
+    return jobs.filter((job) => {
+      if (!job.enabled) return false;
+      // Check nextRun
+      if (job.nextRun) {
+        const d = new Date(job.nextRun);
+        if (isSameDay(d, day) && d.getHours() === hour) return true;
+      }
+      // Check lastRun
+      if (job.lastRun) {
+        const d = new Date(job.lastRun);
+        if (isSameDay(d, day) && d.getHours() === hour) return true;
+      }
+      // Recurring jobs — show on every day at a reasonable hour
+      const sched = job.scheduleDisplay || "";
+      if (sched.includes("Every") || sched.includes("*/")) {
+        // Show at hour 9 as a marker for recurring
+        if (hour === 9) return true;
+      }
+      return false;
     });
   };
 
-  const goToPreviousWeek = () => setCurrentWeekStart(subWeeks(currentWeekStart, 1));
-  const goToNextWeek = () => setCurrentWeekStart(addWeeks(currentWeekStart, 1));
-  const goToToday = () => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const getJobsForDay = (day: Date) => {
+    return jobs.filter((job) => {
+      if (!job.enabled) return false;
+      if (job.nextRun && isSameDay(new Date(job.nextRun), day)) return true;
+      if (job.lastRun && isSameDay(new Date(job.lastRun), day)) return true;
+      if ((job.scheduleDisplay || "").includes("Every") || (job.scheduleDisplay || "").includes("*/")) return true;
+      return false;
+    });
+  };
 
   return (
-    <div className="bg-gray-900 rounded-xl overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-800">
-        <div className="flex items-center gap-4">
+    <div>
+      {/* Navigation */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
           <button
-            onClick={goToPreviousWeek}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+            onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}
+            className="p-2 rounded-lg transition-colors"
+            style={{ backgroundColor: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
           >
-            <ChevronLeft className="w-5 h-5 text-gray-400" />
+            <ChevronLeft size={16} />
           </button>
+          <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "16px", fontWeight: 600, color: "var(--text-primary)" }}>
+            {format(days[0], "MMM d")} – {format(days[6], "MMM d, yyyy")}
+          </h2>
           <button
-            onClick={goToNextWeek}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+            onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}
+            className="p-2 rounded-lg transition-colors"
+            style={{ backgroundColor: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
           >
-            <ChevronRight className="w-5 h-5 text-gray-400" />
-          </button>
-          <button
-            onClick={goToToday}
-            className="px-3 py-1.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
-          >
-            Today
+            <ChevronRight size={16} />
           </button>
         </div>
-
-        <h2 className="text-lg font-medium text-white">
-          {format(currentWeekStart, "MMMM yyyy")}
-        </h2>
-
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <Calendar className="w-4 h-4" />
-          <span>{tasks.length} scheduled tasks</span>
-        </div>
+        <button
+          onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+          className="px-4 py-2 rounded-lg text-sm"
+          style={{ backgroundColor: "var(--accent)", color: "white", border: "none", cursor: "pointer" }}
+        >
+          This Week
+        </button>
       </div>
 
-      {/* Day Headers */}
-      <div className="grid grid-cols-8 border-b border-gray-800">
-        <div className="p-3 text-center text-sm text-gray-500 border-r border-gray-800">
-          Time
-        </div>
-        {days.map((day) => (
-          <div
-            key={day.toISOString()}
-            className={`p-3 text-center border-r border-gray-800 last:border-r-0 ${
-              isSameDay(day, new Date())
-                ? "bg-emerald-500/10"
-                : ""
-            }`}
-          >
-            <div className="text-xs text-gray-500 uppercase">
-              {format(day, "EEE")}
-            </div>
+      {/* Day summary cards */}
+      <div className="grid grid-cols-7 gap-2 mb-6">
+        {days.map((day) => {
+          const dayJobs = getJobsForDay(day);
+          const isToday = isSameDay(day, new Date());
+          return (
             <div
-              className={`text-lg font-medium ${
-                isSameDay(day, new Date()) ? "text-emerald-400" : "text-white"
-              }`}
+              key={day.toISOString()}
+              style={{
+                padding: "12px",
+                backgroundColor: isToday ? "rgba(139, 92, 246, 0.1)" : "var(--surface)",
+                border: `1px solid ${isToday ? "var(--accent)" : "var(--border)"}`,
+                borderRadius: "10px",
+                textAlign: "center",
+              }}
             >
-              {format(day, "d")}
+              <div style={{ fontSize: "10px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                {format(day, "EEE")}
+              </div>
+              <div style={{ fontSize: "20px", fontWeight: 700, color: isToday ? "var(--accent)" : "var(--text-primary)", fontFamily: "var(--font-heading)" }}>
+                {format(day, "d")}
+              </div>
+              <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "4px" }}>
+                {dayJobs.length} job{dayJobs.length !== 1 ? "s" : ""}
+              </div>
+              {dayJobs.slice(0, 2).map((job) => (
+                <div
+                  key={job.id}
+                  onClick={() => setSelectedJob(job)}
+                  style={{
+                    fontSize: "8px",
+                    padding: "2px 4px",
+                    marginTop: "3px",
+                    borderRadius: "3px",
+                    backgroundColor: `${AGENT_COLORS[job.agentId] || AGENT_COLORS.default}22`,
+                    borderLeft: `2px solid ${AGENT_COLORS[job.agentId] || AGENT_COLORS.default}`,
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {job.name}
+                </div>
+              ))}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Time Grid - Show 6am to 10pm */}
-      <div className="max-h-[600px] overflow-y-auto">
-        {hours.filter(h => h >= 6 && h <= 22).map((hour) => (
-          <div key={hour} className="grid grid-cols-8 border-b border-gray-800 last:border-b-0">
-            <div className="p-2 text-xs text-gray-500 text-right pr-3 border-r border-gray-800">
-              {format(new Date().setHours(hour, 0), "HH:mm")}
+      {/* Hourly grid (compact: 6am-11pm) */}
+      <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+        {/* Header */}
+        <div className="grid" style={{ gridTemplateColumns: "60px repeat(7, 1fr)", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ padding: "8px", backgroundColor: "var(--surface)" }} />
+          {days.map((day) => (
+            <div key={day.toISOString()} style={{
+              padding: "8px",
+              textAlign: "center",
+              backgroundColor: isSameDay(day, new Date()) ? "rgba(139, 92, 246, 0.08)" : "var(--surface)",
+              fontFamily: "var(--font-body)",
+              fontSize: "11px",
+              fontWeight: 600,
+              color: isSameDay(day, new Date()) ? "var(--accent)" : "var(--text-muted)",
+              borderLeft: "1px solid var(--border)",
+            }}>
+              {format(day, "EEE d")}
+            </div>
+          ))}
+        </div>
+
+        {/* Hours */}
+        {hours.filter(h => h >= 6 && h <= 23).map((hour) => (
+          <div key={hour} className="grid" style={{ gridTemplateColumns: "60px repeat(7, 1fr)", borderBottom: "1px solid var(--border)" }}>
+            <div style={{
+              padding: "4px 8px",
+              fontSize: "10px",
+              color: "var(--text-muted)",
+              textAlign: "right",
+              backgroundColor: "var(--surface)",
+              minHeight: "32px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+            }}>
+              {hour.toString().padStart(2, "0")}:00
             </div>
             {days.map((day) => {
-              const dayTasks = getTasksForDayAndHour(day, hour);
+              const cellJobs = getJobsForDayAndHour(day, hour);
               return (
                 <div
                   key={`${day.toISOString()}-${hour}`}
-                  className={`p-1 min-h-[48px] border-r border-gray-800 last:border-r-0 ${
-                    isSameDay(day, new Date()) ? "bg-emerald-500/5" : ""
-                  }`}
+                  style={{
+                    minHeight: "32px",
+                    borderLeft: "1px solid var(--border)",
+                    padding: "2px",
+                    backgroundColor: isSameDay(day, new Date()) ? "rgba(139, 92, 246, 0.03)" : "transparent",
+                  }}
                 >
-                  {dayTasks.map((task) => (
+                  {cellJobs.map((job) => (
                     <div
-                      key={task.id}
-                      className="bg-emerald-600/20 border-l-2 border-emerald-500 px-2 py-1 rounded text-xs mb-1"
+                      key={job.id}
+                      onClick={() => setSelectedJob(job)}
+                      style={{
+                        fontSize: "8px",
+                        padding: "2px 3px",
+                        borderRadius: "2px",
+                        backgroundColor: `${AGENT_COLORS[job.agentId] || AGENT_COLORS.default}33`,
+                        color: AGENT_COLORS[job.agentId] || AGENT_COLORS.default,
+                        cursor: "pointer",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontWeight: 600,
+                      }}
                     >
-                      <div className="font-medium text-emerald-400 truncate">
-                        {task.name}
-                      </div>
-                      <div className="text-gray-500 truncate">
-                        {task.schedule}
-                      </div>
+                      {job.name}
                     </div>
                   ))}
                 </div>
@@ -144,6 +237,49 @@ export function WeeklyCalendar() {
           </div>
         ))}
       </div>
+
+      {/* Job detail popup */}
+      {selectedJob && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 50, backgroundColor: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setSelectedJob(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "90%", maxWidth: "450px", backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: "16px", padding: "24px" }}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Clock size={16} style={{ color: "var(--accent)" }} />
+              <h3 style={{ fontFamily: "var(--font-heading)", fontSize: "16px", fontWeight: 700, color: "var(--text-primary)" }}>
+                {selectedJob.name}
+              </h3>
+            </div>
+            <div style={{ display: "grid", gap: "6px", fontSize: "13px" }}>
+              {[
+                ["Agent", selectedJob.agentId],
+                ["Schedule", selectedJob.scheduleDisplay],
+                ["Timezone", selectedJob.timezone],
+                ["Status", selectedJob.enabled ? "Enabled" : "Disabled"],
+                selectedJob.nextRun ? ["Next Run", new Date(selectedJob.nextRun).toLocaleString("en-AU")] : null,
+                selectedJob.lastRun ? ["Last Run", new Date(selectedJob.lastRun).toLocaleString("en-AU")] : null,
+              ].filter((x): x is [string, string] => x !== null).map(([label, value]) => (
+                <div key={label as string} className="flex justify-between">
+                  <span style={{ color: "var(--text-muted)" }}>{label}</span>
+                  <span style={{ color: "var(--text-primary)" }}>{value}</span>
+                </div>
+              ))}
+            </div>
+            {selectedJob.description && (
+              <div style={{ marginTop: "12px", padding: "10px", backgroundColor: "var(--surface-elevated)", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.5" }}>
+                {selectedJob.description}
+              </div>
+            )}
+            <button onClick={() => setSelectedJob(null)} style={{ marginTop: "16px", width: "100%", padding: "10px", backgroundColor: "var(--surface-elevated)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--text-secondary)", cursor: "pointer", fontSize: "13px" }}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
