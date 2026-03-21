@@ -61,10 +61,10 @@ export async function GET() {
 
   const checks: ServiceCheck[] = [];
 
-  // PM2 services
+  // PM2 services — 'tenacitOS' in PM2 is actually registered as 'mission-control'
   const pm2Services = [
     'openclaw-gateway', 'openclaw-watchdog', 'mission-control',
-    'pulse-watcher', 'pulse-ecosystem', 'tenacitOS',
+    'pulse-watcher', 'pulse-ecosystem',
     'claude-bot', 'gemini-bot', 'codex-bot',
     'alert-bot', 'revenue-bot',
   ];
@@ -77,11 +77,8 @@ export async function GET() {
     checkUrl('http://127.0.0.1:3001', 3000),             // Grafana (port 3001)
     checkUrl('http://127.0.0.1:6333/collections', 3000), // Qdrant
     checkUrl('http://127.0.0.1:9090/-/healthy', 3000),   // Prometheus
-    checkUrl('http://127.0.0.1:7474', 3000),              // Neo4j Browser
     checkUrl('http://127.0.0.1:9093/-/healthy', 3000),   // AlertManager
     checkUrl('http://127.0.0.1:4000/health', 3000),      // LiteLLM
-    checkUrl('http://127.0.0.1:9100/metrics', 3000),     // Node Exporter
-    checkUrl('http://127.0.0.1:8080/metrics', 3000),     // cAdvisor
   ]);
 
   checks.push(
@@ -89,15 +86,76 @@ export async function GET() {
     { name: 'Grafana', status: infraChecks[1].status, latency: infraChecks[1].latency, url: 'http://127.0.0.1:3001', category: 'infrastructure' },
     { name: 'Qdrant', status: infraChecks[2].status, latency: infraChecks[2].latency, url: 'http://127.0.0.1:6333', category: 'infrastructure' },
     { name: 'Prometheus', status: infraChecks[3].status, latency: infraChecks[3].latency, url: 'http://127.0.0.1:9090', category: 'infrastructure' },
-    { name: 'Neo4j', status: infraChecks[4].status, latency: infraChecks[4].latency, url: 'http://127.0.0.1:7474', category: 'database' },
-    { name: 'AlertManager', status: infraChecks[5].status, latency: infraChecks[5].latency, url: 'http://127.0.0.1:9093', category: 'infrastructure' },
-    { name: 'LiteLLM', status: infraChecks[6].status, latency: infraChecks[6].latency, url: 'http://127.0.0.1:4000', category: 'infrastructure' },
-    { name: 'Node Exporter', status: infraChecks[7].status, latency: infraChecks[7].latency, url: 'http://127.0.0.1:9100', category: 'monitoring' },
-    { name: 'cAdvisor', status: infraChecks[8].status, latency: infraChecks[8].latency, url: 'http://127.0.0.1:8080', category: 'monitoring' },
+    { name: 'AlertManager', status: infraChecks[4].status, latency: infraChecks[4].latency, url: 'http://127.0.0.1:9093', category: 'infrastructure' },
+    { name: 'LiteLLM', status: infraChecks[5].status, latency: infraChecks[5].latency, url: 'http://127.0.0.1:4000', category: 'infrastructure' },
   );
 
-  // Database connectivity checks via WSL docker on Windows
+  // Docker command — win32 needs wsl prefix
   const dockerCmd = process.platform === 'win32' ? 'wsl docker' : 'docker';
+
+  // Neo4j — HTTP disabled (NEO4J_server_http_enabled=false), check via container state + Bolt port
+  const neo4jStart = Date.now();
+  const neo4jCheck: ServiceCheck = await execAsync(
+    `${dockerCmd} inspect omni-neo4j --format "{{.State.Status}}" 2>&1`,
+    { timeout: 5000 }
+  ).then(({ stdout }) => ({
+    name: 'Neo4j',
+    status: stdout.trim() === 'running' ? 'up' as const : 'down' as const,
+    latency: Date.now() - neo4jStart,
+    details: `container: ${stdout.trim()}, Bolt :7687`,
+    url: 'bolt://127.0.0.1:7687',
+    category: 'database',
+  })).catch(() => ({
+    name: 'Neo4j',
+    status: 'down' as const,
+    latency: Date.now() - neo4jStart,
+    details: 'container inspect failed',
+    url: 'bolt://127.0.0.1:7687',
+    category: 'database',
+  }));
+  checks.push(neo4jCheck);
+
+  // Node Exporter — not bound to host port, check container state
+  const nodeExporterStart = Date.now();
+  const nodeExporterCheck: ServiceCheck = await execAsync(
+    `${dockerCmd} inspect halvo-node-exporter --format "{{.State.Status}}" 2>&1`,
+    { timeout: 5000 }
+  ).then(({ stdout }) => ({
+    name: 'Node Exporter',
+    status: stdout.trim() === 'running' ? 'up' as const : 'down' as const,
+    latency: Date.now() - nodeExporterStart,
+    details: `container: ${stdout.trim()} (no host port)`,
+    category: 'monitoring',
+  })).catch(() => ({
+    name: 'Node Exporter',
+    status: 'unknown' as const,
+    latency: Date.now() - nodeExporterStart,
+    details: 'container inspect failed',
+    category: 'monitoring',
+  }));
+  checks.push(nodeExporterCheck);
+
+  // cAdvisor — not bound to host port, check container state
+  const cadvisorStart = Date.now();
+  const cadvisorCheck: ServiceCheck = await execAsync(
+    `${dockerCmd} inspect halvo-cadvisor --format "{{.State.Status}}" 2>&1`,
+    { timeout: 5000 }
+  ).then(({ stdout }) => ({
+    name: 'cAdvisor',
+    status: stdout.trim() === 'running' ? 'up' as const : 'down' as const,
+    latency: Date.now() - cadvisorStart,
+    details: `container: ${stdout.trim()} (no host port)`,
+    category: 'monitoring',
+  })).catch(() => ({
+    name: 'cAdvisor',
+    status: 'unknown' as const,
+    latency: Date.now() - cadvisorStart,
+    details: 'container inspect failed',
+    category: 'monitoring',
+  }));
+  checks.push(cadvisorCheck);
+
+  // Database connectivity checks
   const dbChecks = await Promise.all([
     // Redis
     execAsync(`${dockerCmd} exec omni-redis redis-cli -a omni_secure_redis ping 2>&1`, { timeout: 5000 })

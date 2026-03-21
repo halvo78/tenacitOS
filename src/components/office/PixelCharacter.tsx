@@ -23,14 +23,13 @@ export function PixelCharacter({
   const [typing, setTyping] = useState(false);
 
   useEffect(() => {
-    if (agent.isActive) {
-      const typingInterval = setInterval(() => {
-        setTyping((prev) => !prev);
-      }, 800);
-      return () => clearInterval(typingInterval);
-    } else {
-      setTyping(false);
+    if (!agent.isActive) {
+      return () => { setTyping(false); };
     }
+    const typingInterval = setInterval(() => {
+      setTyping((prev) => !prev);
+    }, 800);
+    return () => { clearInterval(typingInterval); setTyping(false); };
   }, [agent.isActive]);
 
   const getDeskStyle = () => {

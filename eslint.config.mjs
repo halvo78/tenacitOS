@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // CommonJS PM2 launchers (intentional require())
+    "start-pm2.js",
+    "start.js",
+    "public/sw.js",
   ]),
 ]);
 

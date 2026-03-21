@@ -1,44 +1,45 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { StickyNote, Save, Trash2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { StickyNote, Trash2 } from "lucide-react";
 
 const STORAGE_KEY = "tenacitos-notepad";
 
+function loadFromStorage(): { text: string; lastSaved: Date | null } {
+  try {
+    if (typeof window === 'undefined') return { text: '', lastSaved: null };
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const data = JSON.parse(stored);
+      return { text: data.text || '', lastSaved: data.ts ? new Date(data.ts) : null };
+    }
+  } catch { /* empty */ }
+  return { text: '', lastSaved: null };
+}
+
 export function Notepad() {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => loadFromStorage().text);
   const [saved, setSaved] = useState(true);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [lastSaved, setLastSaved] = useState<Date | null>(() => loadFromStorage().lastSaved);
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        setText(data.text || "");
-        setLastSaved(data.ts ? new Date(data.ts) : null);
-      }
-    } catch {}
-  }, []);
-
-  // Auto-save after 2 seconds of no typing
-  useEffect(() => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    setSaved(false);
-    saveTimerRef.current = setTimeout(() => {
-      save();
-    }, 2000);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [text]);
-
-  const save = () => {
+  const save = useCallback(() => {
     const now = new Date();
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ text, ts: now.toISOString() }));
     setSaved(true);
     setLastSaved(now);
-  };
+  }, [text]);
+
+  // Auto-save after 2 seconds of no typing
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    // Mark unsaved via timeout to avoid sync setState in effect
+    const unsavedTimer = setTimeout(() => setSaved(false), 0);
+    saveTimerRef.current = setTimeout(() => {
+      save();
+    }, 2000);
+    return () => { clearTimeout(unsavedTimer); if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [text, save]);
 
   const clear = () => {
     setText("");

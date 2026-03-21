@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
 
@@ -43,7 +43,13 @@ try {
  * Returns a map of agentId → session count.
  * Never throws — returns empty map on any failure.
  */
-async function getActiveSessionCounts(config: any): Promise<Record<string, number>> {
+interface OpenClawConfig {
+  gateway?: { auth?: { token?: string }; port?: number };
+  agents: { list: Array<{ id: string; name?: string; model?: { primary?: string }; workspace: string; subagents?: { allowAgents?: string[] } }>; defaults: { model: { primary: string } } };
+  channels?: { telegram?: { accounts?: Record<string, { botToken?: string; dmPolicy?: string }>; dmPolicy?: string } };
+}
+
+async function getActiveSessionCounts(config: OpenClawConfig): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   try {
     let sessions: Array<{ key: string }> | null = null;
@@ -97,7 +103,7 @@ async function getActiveSessionCounts(config: any): Promise<Record<string, numbe
 /**
  * Get agent display info from agent-display.json (TenacitOS config, NOT openclaw.json)
  */
-function getAgentDisplayInfo(agentId: string, agentConfig: any): { emoji: string; color: string; name: string } {
+function getAgentDisplayInfo(agentId: string, agentConfig: { name?: string } | null): { emoji: string; color: string; name: string } {
   const display = AGENT_DISPLAY[agentId];
   const configName = agentConfig?.name;
 
@@ -114,13 +120,13 @@ export async function GET() {
     const configPath = (process.env.OPENCLAW_DIR || "E:\\.openclaw") + "/openclaw.json";
     let raw = readFileSync(configPath, "utf-8");
     if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
-    const config = JSON.parse(raw);
+    const config = JSON.parse(raw) as OpenClawConfig;
 
     // Get active session counts (best-effort, won't block on failure)
     const sessionCounts = await getActiveSessionCounts(config);
 
     // Get agents from config
-    const agents: Agent[] = config.agents.list.map((agent: any) => {
+    const agents: Agent[] = config.agents.list.map((agent) => {
       const agentInfo = getAgentDisplayInfo(agent.id, agent);
 
       // Get telegram account info
@@ -136,7 +142,7 @@ export async function GET() {
       try {
         const today = new Date().toISOString().split("T")[0];
         const memoryFile = join(memoryPath, `${today}.md`);
-        const stat = require("fs").statSync(memoryFile);
+        const stat = statSync(memoryFile);
         lastActivity = stat.mtime.toISOString();
         // Consider online if activity within last 5 minutes
         status =
@@ -152,7 +158,7 @@ export async function GET() {
       const allowAgentsDetails = allowAgents.map((subagentId: string) => {
         // Find subagent in config
         const subagentConfig = config.agents.list.find(
-          (a: any) => a.id === subagentId
+          (a: { id: string }) => a.id === subagentId
         );
         if (subagentConfig) {
           const subagentInfo = getAgentDisplayInfo(subagentId, subagentConfig);

@@ -58,11 +58,9 @@ function TreeNode({
     }
   };
 
-  const Icon = isFolder
-    ? isExpanded
-      ? FolderOpen
-      : Folder
-    : getFileIcon(node.name);
+  // getFileIcon returns existing imported Lucide components (Brain, Ghost, etc), not new components
+  /* eslint-disable react-hooks/static-components -- getFileIcon returns stable imported components */
+  const FileIcon = getFileIcon(node.name);
 
   return (
     <div>
@@ -97,16 +95,18 @@ function TreeNode({
           </span>
         )}
         {!isFolder && <span className="w-3.5 md:w-4" />}
-        <Icon
-          className="w-3.5 h-3.5 md:w-4 md:h-4"
-          style={{
-            color: isFolder
-              ? "#F59E0B"
-              : isSelected
-              ? "var(--text-primary)"
-              : "#60A5FA",
-          }}
-        />
+        {isFolder ? (
+          isExpanded ? (
+            <FolderOpen className="w-3.5 h-3.5 md:w-4 md:h-4" style={{ color: "#F59E0B" }} />
+          ) : (
+            <Folder className="w-3.5 h-3.5 md:w-4 md:h-4" style={{ color: "#F59E0B" }} />
+          )
+        ) : (
+          <FileIcon
+            className="w-3.5 h-3.5 md:w-4 md:h-4"
+            style={{ color: isSelected ? "var(--text-primary)" : "#60A5FA" }}
+          />
+        )}
         <span className="truncate">{node.name}</span>
       </button>
 

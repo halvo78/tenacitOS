@@ -16,7 +16,7 @@ export async function GET(
     const config = JSON.parse(readFileSync(configPath, "utf-8"));
 
     // Find agent
-    const agent = config.agents.list.find((a: any) => a.id === id);
+    const agent = config.agents.list.find((a: { id: string }) => a.id === id);
     if (!agent) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
@@ -47,7 +47,7 @@ export async function GET(
 
     // Get session info (from OpenClaw API if available)
     // For now, we return mock data
-    const sessions: Array<any> = [];
+    const sessions: Array<Record<string, unknown>> = [];
 
     // Get telegram account info
     const telegramAccount = config.channels?.telegram?.accounts?.[id];

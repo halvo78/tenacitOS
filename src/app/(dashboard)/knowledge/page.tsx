@@ -77,7 +77,14 @@ export default function KnowledgePage() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/knowledge")
+      .then((res) => res.json())
+      .then((json) => { if (!cancelled) { setData(json); setLoading(false); } })
+      .catch((err) => { console.error("Failed to fetch knowledge data:", err); if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;

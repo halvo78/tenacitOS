@@ -3,6 +3,13 @@
  * GET /api/knowledge — Summary of all knowledge backends
  */
 import { NextResponse } from 'next/server';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import fs from 'fs';
+import path from 'path';
+
+const execAsync = promisify(exec);
+const dockerCmd = process.platform === 'win32' ? 'wsl docker' : 'docker';
 
 let cache: { data: unknown; ts: number } | null = null;
 const CACHE_DURATION = 60 * 1000; // 1 min
@@ -23,7 +30,7 @@ export async function GET() {
   }
 
   // Qdrant collections
-  let qdrant = { status: 'down' as string, collections: 0, totalVectors: 0, collectionList: [] as Array<{ name: string; vectors: number }> };
+  const qdrant = { status: 'down' as string, collections: 0, totalVectors: 0, collectionList: [] as Array<{ name: string; vectors: number }> };
   try {
     const data = await safeJson('http://127.0.0.1:6333/collections') as { result?: { collections?: Array<{ name: string }> } } | null;
     if (data?.result?.collections) {
@@ -44,21 +51,20 @@ export async function GET() {
     }
   } catch {}
 
-  // Neo4j
-  let neo4j = { status: 'down' as string, details: '' };
+  // Neo4j (HTTP disabled, check container state via Docker)
+  const neo4j = { status: 'down' as string, details: '' };
   try {
-    const res = await fetch('http://127.0.0.1:7474', { signal: AbortSignal.timeout(3000) });
-    neo4j.status = res.ok || res.status < 500 ? 'up' : 'down';
-    neo4j.details = `HTTP ${res.status}`;
-  } catch {}
+    const { stdout } = await execAsync(`${dockerCmd} inspect omni-neo4j --format "{{.State.Status}}" 2>&1`, { timeout: 5000 });
+    neo4j.status = stdout.trim() === 'running' ? 'up' : 'down';
+    neo4j.details = `container: ${stdout.trim()}, Bolt :7687`;
+  } catch {
+    neo4j.details = 'container inspect failed';
+  }
 
   // PostgreSQL (via Docker)
-  let postgres = { status: 'unknown' as string, details: '' };
+  const postgres = { status: 'unknown' as string, details: '' };
   try {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-    const { stdout } = await execAsync('docker exec postgres-omni pg_isready -U omni -d omni_brain 2>nul');
+    const { stdout } = await execAsync(`${dockerCmd} exec omni-postgres pg_isready -U omni -d omni_brain 2>&1`, { timeout: 5000 });
     postgres.status = stdout.includes('accepting') ? 'up' : 'down';
     postgres.details = stdout.trim();
   } catch {
@@ -66,12 +72,9 @@ export async function GET() {
   }
 
   // Redis
-  let redis = { status: 'unknown' as string, details: '' };
+  const redis = { status: 'unknown' as string, details: '' };
   try {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-    const { stdout } = await execAsync('docker exec redis-stack redis-cli -a omni_secure_redis ping 2>nul');
+    const { stdout } = await execAsync(`${dockerCmd} exec omni-redis redis-cli -a omni_secure_redis ping 2>&1`, { timeout: 5000 });
     redis.status = stdout.includes('PONG') ? 'up' : 'down';
     redis.details = stdout.trim();
   } catch {
@@ -79,14 +82,11 @@ export async function GET() {
   }
 
   // Obsidian vault
-  let obsidian = { status: 'unknown' as string, noteCount: 0 };
+  const obsidian = { status: 'unknown' as string, noteCount: 0 };
   try {
-    const fs = require('fs');
-    const path = require('path');
     const vaultPath = process.env.OBSIDIAN_VAULT_PATH || 'C:\\Users\\Halvo\\Documents\\Obsidian Vault';
     if (fs.existsSync(vaultPath)) {
       obsidian.status = 'up';
-      // Count .md files
       function countMd(dir: string): number {
         let count = 0;
         try {
@@ -97,21 +97,19 @@ export async function GET() {
             if (entry.isDirectory()) count += countMd(full);
             else if (entry.name.endsWith('.md')) count++;
           }
-        } catch {}
+        } catch { /* skip unreadable dirs */ }
         return count;
       }
       obsidian.noteCount = countMd(vaultPath);
     }
-  } catch {}
+  } catch { /* skip */ }
 
   // Agent memory
-  let agentMemory = { fileCount: 0, workspaceCount: 0 };
+  const agentMemory = { fileCount: 0, workspaceCount: 0 };
   try {
-    const fs = require('fs');
-    const path = require('path');
     const wsRoot = 'E:\\workspaces';
     if (fs.existsSync(wsRoot)) {
-      const dirs = fs.readdirSync(wsRoot, { withFileTypes: true }).filter((d: { isDirectory: () => boolean }) => d.isDirectory());
+      const dirs = fs.readdirSync(wsRoot, { withFileTypes: true }).filter((d) => d.isDirectory());
       agentMemory.workspaceCount = dirs.length;
       for (const d of dirs) {
         const memDir = path.join(wsRoot, d.name, 'memory');

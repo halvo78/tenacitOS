@@ -207,26 +207,33 @@ function SessionDetail({
   onClose: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!!session.sessionId);
+  const [error, setError] = useState<string | null>(
+    session.sessionId ? null : "No session file available"
+  );
 
   useEffect(() => {
-    if (!session.sessionId) {
-      setLoading(false);
-      setError("No session file available");
-      return;
-    }
+    if (!session.sessionId) return;
 
-    setLoading(true);
-    setError(null);
-    fetch(`/api/sessions?id=${session.sessionId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setMessages(data.messages || []);
-        if (data.error) setError(data.error);
-      })
-      .catch(() => setError("Failed to load messages"))
-      .finally(() => setLoading(false));
+    const controller = new AbortController();
+    const doFetch = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const r = await fetch(`/api/sessions?id=${session.sessionId}`, { signal: controller.signal });
+        const data = await r.json();
+        if (!controller.signal.aborted) {
+          setMessages(data.messages || []);
+          if (data.error) setError(data.error);
+        }
+      } catch {
+        if (!controller.signal.aborted) setError("Failed to load messages");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+    doFetch();
+    return () => { controller.abort(); };
   }, [session.sessionId]);
 
   const userCount = messages.filter((m) => m.type === "user").length;

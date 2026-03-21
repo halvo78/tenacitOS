@@ -38,10 +38,10 @@ export interface UsageSnapshot {
 /**
  * Get current OpenClaw status with session data
  */
-export async function getOpenClawStatus(): Promise<any> {
+export async function getOpenClawStatus(): Promise<Record<string, unknown>> {
   try {
     const { stdout } = await execAsync("openclaw status --json");
-    return JSON.parse(stdout);
+    return JSON.parse(stdout) as Record<string, unknown>;
   } catch (error) {
     console.error("Error getting OpenClaw status:", error);
     throw error;
@@ -51,14 +51,15 @@ export async function getOpenClawStatus(): Promise<any> {
 /**
  * Extract session data from status
  */
-export function extractSessionData(status: any): SessionData[] {
+export function extractSessionData(status: Record<string, unknown>): SessionData[] {
   const sessions: SessionData[] = [];
 
-  if (!status.sessions?.byAgent) {
+  const statusSessions = status.sessions as { byAgent?: Array<{ agentId: string; recent?: Array<{ key: string; sessionId: string; model?: string; inputTokens?: number; outputTokens?: number; totalTokens?: number; updatedAt?: string; percentUsed?: number }> }> } | undefined;
+  if (!statusSessions?.byAgent) {
     return sessions;
   }
 
-  for (const agentGroup of status.sessions.byAgent) {
+  for (const agentGroup of statusSessions.byAgent) {
     const agentId = agentGroup.agentId;
 
     for (const session of agentGroup.recent || []) {
@@ -70,7 +71,7 @@ export function extractSessionData(status: any): SessionData[] {
         inputTokens: session.inputTokens || 0,
         outputTokens: session.outputTokens || 0,
         totalTokens: session.totalTokens || 0,
-        updatedAt: session.updatedAt,
+        updatedAt: session.updatedAt ? new Date(session.updatedAt).getTime() : Date.now(),
         percentUsed: session.percentUsed || 0,
       });
     }

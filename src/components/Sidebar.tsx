@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -28,6 +28,9 @@ import {
   GitFork,
   SquareTerminal,
   History,
+  ShieldCheck,
+  Network,
+  Code2,
 } from "lucide-react";
 import { getAgentDisplayName } from "@/config/branding";
 
@@ -50,6 +53,9 @@ const navItems = [
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/reports", label: "Reports", icon: FileBarChart },
   { href: "/skills", label: "Skills", icon: Puzzle },
+  { href: "/commissioning", label: "Commissioning", icon: ShieldCheck },
+  { href: "/architecture", label: "Architecture", icon: Network },
+  { href: "/code-quality", label: "Code Quality", icon: Code2 },
   { href: "/about", label: getAgentDisplayName(), icon: User },
 ];
 
@@ -73,10 +79,15 @@ export function Sidebar() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Close sidebar when navigating on mobile
+  // Close sidebar when navigating on mobile — track pathname changes via ref
+  const prevPathnameRef = useRef(pathname);
   useEffect(() => {
-    if (isMobile) {
-      setIsOpen(false);
+    if (prevPathnameRef.current !== pathname) {
+      prevPathnameRef.current = pathname;
+      if (isMobile) {
+        // Defer to avoid sync setState in effect
+        requestAnimationFrame(() => setIsOpen(false));
+      }
     }
   }, [pathname, isMobile]);
 

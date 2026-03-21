@@ -64,7 +64,7 @@ function uid(): string {
 // ── Component ──────────────────────────────────────────────────────────
 
 export default function TaskBoardPage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<Task[]>(() => loadTasks());
   const [agents, setAgents] = useState<Agent[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [filterAgent, setFilterAgent] = useState("");
@@ -94,10 +94,7 @@ export default function TaskBoardPage() {
       .catch(() => {});
   }, []);
 
-  // Load tasks from localStorage
-  useEffect(() => {
-    setTasks(loadTasks());
-  }, []);
+  // Tasks initialized from localStorage via useState initializer above
 
   // Persist on change
   const persist = useCallback((next: Task[]) => {
