@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { execSync } from "child_process";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,62 @@ try {
 }
 
 /**
+ * Count active sessions per agent by querying the gateway or CLI.
+ * Returns a map of agentId → session count.
+ * Never throws — returns empty map on any failure.
+ */
+async function getActiveSessionCounts(config: any): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  try {
+    let sessions: Array<{ key: string }> | null = null;
+
+    // Try gateway first
+    const token = config.gateway?.auth?.token;
+    const port = config.gateway?.port || 19000;
+    if (token) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/sessions`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(4000),
+        });
+        if (res.ok) {
+          const body = await res.json();
+          sessions = Array.isArray(body) ? body : body?.sessions ?? null;
+        }
+      } catch {
+        // Gateway unavailable, fall through
+      }
+    }
+
+    // Fallback to CLI
+    if (!sessions) {
+      try {
+        const out = execSync("openclaw sessions list --json 2>nul", {
+          timeout: 8000,
+          encoding: "utf-8",
+        });
+        const parsed = JSON.parse(out);
+        sessions = parsed?.sessions ?? parsed ?? [];
+      } catch {
+        return counts;
+      }
+    }
+
+    // Count sessions per agent ID (key format: agent:<agentId>:<type>[...])
+    for (const s of sessions ?? []) {
+      const parts = (s.key ?? "").split(":");
+      // Skip run-entry duplicates and unknown keys
+      if (parts.length < 3 || parts.includes("run")) continue;
+      const agentId = parts[1];
+      counts[agentId] = (counts[agentId] ?? 0) + 1;
+    }
+  } catch {
+    // Never propagate
+  }
+  return counts;
+}
+
+/**
  * Get agent display info from agent-display.json (TenacitOS config, NOT openclaw.json)
  */
 function getAgentDisplayInfo(agentId: string, agentConfig: any): { emoji: string; color: string; name: string } {
@@ -53,9 +110,14 @@ function getAgentDisplayInfo(agentId: string, agentConfig: any): { emoji: string
 
 export async function GET() {
   try {
-    // Read openclaw config
-    const configPath = (process.env.OPENCLAW_DIR || "E:.openclaw") + "/openclaw.json";
-    const config = JSON.parse(readFileSync(configPath, "utf-8"));
+    // Read openclaw config (strip BOM if present)
+    const configPath = (process.env.OPENCLAW_DIR || "E:\\.openclaw") + "/openclaw.json";
+    let raw = readFileSync(configPath, "utf-8");
+    if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+    const config = JSON.parse(raw);
+
+    // Get active session counts (best-effort, won't block on failure)
+    const sessionCounts = await getActiveSessionCounts(config);
 
     // Get agents from config
     const agents: Agent[] = config.agents.list.map((agent: any) => {
@@ -128,7 +190,7 @@ export async function GET() {
         botToken: botToken ? "configured" : undefined,
         status,
         lastActivity,
-        activeSessions: 0, // TODO: get from sessions API
+        activeSessions: sessionCounts[agent.id] ?? 0,
       };
     });
 

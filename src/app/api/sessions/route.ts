@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { execSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import fs from 'fs';
 
 const OPENCLAW_DIR = process.env.OPENCLAW_DIR || 'E:\\.openclaw';
 
@@ -122,7 +123,6 @@ async function listSessions(): Promise<NextResponse> {
 
     // Try gateway API first (faster than CLI)
     try {
-      const fs = require('fs');
       const configRaw = fs.readFileSync(OPENCLAW_DIR + '/openclaw.json', 'utf-8');
       const config = JSON.parse(configRaw);
       const token = config.gateway?.auth?.token;

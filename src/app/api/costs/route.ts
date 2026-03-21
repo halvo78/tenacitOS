@@ -9,9 +9,32 @@ import {
   getHourlyCost,
 } from "@/lib/usage-queries";
 import path from "path";
+import fs from "fs";
 
 const DB_PATH = path.join(process.cwd(), "data", "usage-tracking.db");
+const BUDGET_PATH = path.join(process.cwd(), "data", "budget.json");
 const DEFAULT_BUDGET = 100.0; // Default budget in USD
+
+interface BudgetConfig {
+  budget: number;
+  alerts: { threshold: number; email?: string }[];
+}
+
+function readBudgetConfig(): BudgetConfig {
+  try {
+    return JSON.parse(fs.readFileSync(BUDGET_PATH, "utf-8"));
+  } catch {
+    return { budget: DEFAULT_BUDGET, alerts: [] };
+  }
+}
+
+function writeBudgetConfig(config: BudgetConfig): void {
+  const dataDir = path.dirname(BUDGET_PATH);
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  fs.writeFileSync(BUDGET_PATH, JSON.stringify(config, null, 2));
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -23,6 +46,8 @@ export async function GET(request: NextRequest) {
   try {
     const db = getDatabase(DB_PATH);
 
+    const budgetConfig = readBudgetConfig();
+
     if (!db) {
       // Database doesn't exist yet - return zeros
       return NextResponse.json({
@@ -31,7 +56,8 @@ export async function GET(request: NextRequest) {
         thisMonth: 0,
         lastMonth: 0,
         projected: 0,
-        budget: DEFAULT_BUDGET,
+        budget: budgetConfig.budget,
+        alerts: budgetConfig.alerts,
         byAgent: [],
         byModel: [],
         daily: [],
@@ -51,7 +77,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       ...summary,
-      budget: DEFAULT_BUDGET,
+      budget: budgetConfig.budget,
+      alerts: budgetConfig.alerts,
       byAgent,
       byModel,
       daily,
@@ -72,14 +99,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { budget, alerts } = body;
 
-    // In production, save to database
-    // For now, just return success
-    
-    return NextResponse.json({
-      success: true,
+    if (typeof budget !== "number" || budget <= 0) {
+      return NextResponse.json(
+        { error: "Invalid budget value" },
+        { status: 400 }
+      );
+    }
+
+    const config: BudgetConfig = {
       budget,
-      alerts,
-    });
+      alerts: Array.isArray(alerts) ? alerts : [],
+    };
+    writeBudgetConfig(config);
+
+    return NextResponse.json({ success: true, budget, alerts: config.alerts });
   } catch (error) {
     console.error("Error updating budget:", error);
     return NextResponse.json(

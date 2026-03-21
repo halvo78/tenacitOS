@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { timingSafeEqual } from "crypto";
 
 // Simple in-memory rate limiter (per-IP, resets on server restart)
 // Sufficient for a personal dashboard — no external dependency needed
@@ -87,7 +88,12 @@ export async function POST(request: NextRequest) {
 
   const { password } = await request.json();
 
-  if (password === process.env.ADMIN_PASSWORD) {
+  const expected = process.env.ADMIN_PASSWORD ?? "";
+  const passwordMatch =
+    password.length === expected.length &&
+    timingSafeEqual(Buffer.from(password), Buffer.from(expected));
+
+  if (passwordMatch) {
     clearAttempts(ip); // Reset on success
 
     const response = NextResponse.json({ success: true });
@@ -96,7 +102,7 @@ export async function POST(request: NextRequest) {
     // secure=true in production (HTTPS), false in dev (HTTP localhost)
     response.cookies.set("mc_auth", process.env.AUTH_SECRET!, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.NODE_ENV === "production" && !process.env.LOCALHOST_MODE,
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: "/",

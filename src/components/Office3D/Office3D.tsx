@@ -2,7 +2,7 @@
 
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Sky, Environment } from '@react-three/drei';
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { Vector3 } from 'three';
 import { AGENTS } from './agentsConfig';
 import type { AgentState } from './agentsConfig';
@@ -25,15 +25,29 @@ export default function Office3D() {
   const [controlMode, setControlMode] = useState<'orbit' | 'fps'>('orbit');
   const [avatarPositions, setAvatarPositions] = useState<Map<string, any>>(new Map());
   
-  // Mock data - TODO: Replace with real API data
-  const [agentStates] = useState<Record<string, AgentState>>({
-    main: { id: 'main', status: 'working', currentTask: 'Processing emails', model: 'opus', tokensPerHour: 15000, tasksInQueue: 3, uptime: 12 },
-    kael: { id: 'kael', status: 'idle', model: 'sonnet', tokensPerHour: 0, tasksInQueue: 0, uptime: 8 },
-    jarvis: { id: 'jarvis', status: 'thinking', currentTask: 'Generating YouTube script', model: 'opus', tokensPerHour: 8000, tasksInQueue: 1, uptime: 5 },
-    gilfoil: { id: 'gilfoil', status: 'working', currentTask: 'Drafting post', model: 'sonnet', tokensPerHour: 5000, tasksInQueue: 2, uptime: 10 },
-    strategist: { id: 'strategist', status: 'idle', model: 'sonnet', tokensPerHour: 0, tasksInQueue: 0, uptime: 7 },
-    hormozi: { id: 'hormozi', status: 'error', currentTask: 'Failed deployment', model: 'haiku', tokensPerHour: 1000, tasksInQueue: 0, uptime: 15 },
-  });
+  const [agentStates, setAgentStates] = useState<Record<string, AgentState>>({});
+
+  useEffect(() => {
+    fetch('/api/agents')
+      .then((r) => r.json())
+      .then((data: { agents?: Array<{ id: string; status: string; model?: string }> }) => {
+        if (!data.agents) return;
+        const states: Record<string, AgentState> = {};
+        for (const agent of data.agents) {
+          states[agent.id] = {
+            id: agent.id,
+            status: agent.status === 'online' ? 'working' : 'idle',
+            model: agent.model?.split('/').pop() ?? 'sonnet',
+            tokensPerHour: 0,
+            tasksInQueue: 0,
+          };
+        }
+        setAgentStates(states);
+      })
+      .catch(() => {
+        // API unavailable — leave states empty (agents show as idle)
+      });
+  }, []);
 
   const handleDeskClick = (agentId: string) => {
     setSelectedAgent(agentId);
